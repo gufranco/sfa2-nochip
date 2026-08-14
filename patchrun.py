@@ -1,0 +1,110 @@
+import sys
+from collections import namedtuple
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import emu65816
+import layout
+import rombuild
+import romtools as rt
+
+ENTRY_POINTS = {0x00: 0x35CD84, 0x10: 0x35CDD0, 0x70: 0x35CE1C}
+VARIABLE_ENTRY = 0x35CE68
+
+DMA_BASE = 0x4300
+DMA_TRIGGER = 0x420B
+DMA_BLOCK = range(0x4300, 0x4380)
+FIXED_ADDRESS_BIT = 0x08
+ARMED_DMAP = 0x09
+STEP_LIMIT = 400_000
+STACK_TOP = 0x01FF
+WINDOW_BASE = 0xC0
+
+Outcome = namedtuple("Outcome", "destination dmap cpu")
+
+
+class SnesMemory:
+    def __init__(self, image, banks=rombuild.IMAGE_BANKS):
+        self.image = image
+        self.banks = banks
+        self.ram = {}
+        self.triggered = None
+
+    def read8(self, address):
+        bank, offset = address >> 16, address & 0xFFFF
+        if bank in rombuild.WRAM_BANKS:
+            return self.ram.get(address, 0x00)
+        if (bank < 0x40 or 0x80 <= bank < 0xC0) and offset < layout.HALF:
+            return self.ram.get(address, 0x00)
+        return self.image[layout.address_to_file(bank, offset, self.banks)]
+
+    def write8(self, address, value):
+        self.ram[address] = value & 0xFF
+        if address == DMA_TRIGGER:
+            self.triggered = {a: self.ram.get(a, 0x00) for a in DMA_BLOCK}
+
+
+def dma_source(snapshot, channel=0x00):
+    base = DMA_BASE + channel
+    return snapshot[base + 2] | (snapshot[base + 3] << 8) | (snapshot[base + 4] << 16)
+
+
+def translate(memory, source, channel=0x00, entry=None, dmap=ARMED_DMAP, **registers):
+    base = DMA_BASE + channel
+    memory.ram.clear()
+    memory.ram[base] = dmap
+    memory.ram[base + 2] = source & 0xFF
+    memory.ram[base + 3] = (source >> 8) & 0xFF
+    memory.ram[base + 4] = WINDOW_BASE + (source >> 16)
+
+    cpu = emu65816.Cpu(memory, step_limit=STEP_LIMIT)
+    cpu.s = STACK_TOP
+    cpu.m8 = True
+    cpu.x8 = True
+    cpu.a = 0x0001
+    for name, value in registers.items():
+        setattr(cpu, name, value)
+
+    cpu.call(entry if entry is not None else ENTRY_POINTS[channel])
+
+    destination = (
+        memory.ram[base + 2]
+        | (memory.ram[base + 3] << 8)
+        | (memory.ram[base + 4] << 16)
+    )
+    return Outcome(destination, memory.ram[base], cpu)
+
+
+def main():
+    if len(sys.argv) < 4:
+        print(
+            "usage: patchrun.py <built-image> <patched-rom> <tagged-rom>",
+            file=sys.stderr,
+        )
+        return 2
+
+    image = rt.load(sys.argv[1])
+    entries = rombuild.load_entries(rt.load(sys.argv[3]))
+    expected = rombuild.build(rt.load(sys.argv[2]), entries).destinations
+    memory = SnesMemory(image)
+
+    failures = 0
+    for entry in entries:
+        outcome = translate(memory, entry.source)
+        if outcome.destination != expected[entry.index]:
+            failures += 1
+            if failures <= 5:
+                print(
+                    f"  stream {entry.index}: got {outcome.destination:#08x}, "
+                    f"want {expected[entry.index]:#08x}"
+                )
+        elif outcome.dmap & FIXED_ADDRESS_BIT:
+            failures += 1
+            print(f"  stream {entry.index}: fixed-address bit still set")
+
+    print(f"  executed {len(entries):,} streams, {failures} failures")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

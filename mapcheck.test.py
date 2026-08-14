@@ -1,0 +1,112 @@
+import importlib.util
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+
+def load_module(name):
+    spec = importlib.util.spec_from_file_location(name, ROOT / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+mapcheck = load_module("mapcheck")
+romtools = load_module("romtools")
+
+JP_ROM = ROOT / "roms" / "sfz2-jp-final.sfc"
+JP_MAP = ROOT / "maps" / "sfz2-jp.json"
+
+
+class LoadTest(unittest.TestCase):
+    def write_map(self, mapping):
+        handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump(mapping, handle)
+        handle.close()
+        return Path(handle.name)
+
+    def test_a_map_loads_as_sorted_pairs(self):
+        path = self.write_map({"512": 64, "256": 32})
+
+        self.assertEqual(mapcheck.load(path), [(256, 32), (512, 64)])
+
+    def test_a_map_with_a_non_positive_length_is_rejected(self):
+        path = self.write_map({"256": 0})
+
+        with self.assertRaises(ValueError):
+            mapcheck.load(path)
+
+
+class DuplicateTest(unittest.TestCase):
+    def test_distinct_sources_report_no_duplicates(self):
+        self.assertEqual(mapcheck.duplicate_sources([(1, 2), (3, 4)]), [])
+
+    def test_a_repeated_source_is_reported(self):
+        self.assertEqual(mapcheck.duplicate_sources([(1, 2), (1, 4)]), [1])
+
+
+class KeyTest(unittest.TestCase):
+    def test_a_source_maps_to_its_window_bank_and_offset(self):
+        self.assertEqual(mapcheck.window_key(0x1A86EC), (0xDA, 0x86EC))
+
+    def test_the_first_window_bank_is_c0(self):
+        self.assertEqual(mapcheck.window_key(0x000000), (0xC0, 0x0000))
+
+
+class ScanCostTest(unittest.TestCase):
+    def test_an_empty_map_costs_nothing(self):
+        self.assertEqual(mapcheck.scan_cost([]), (0, 0))
+
+    def test_a_single_stream_is_found_immediately(self):
+        median, worst = mapcheck.scan_cost([(0x1A86EC, 3936)])
+
+        self.assertEqual(worst, 0)
+        self.assertEqual(median, 0)
+
+    def test_colliding_addresses_push_a_key_further_out(self):
+        entries = [(0x000100 + (bank << 16), 32) for bank in range(4)]
+
+        _, worst = mapcheck.scan_cost(entries)
+
+        self.assertGreater(worst, 0)
+
+
+@unittest.skipUnless(
+    JP_ROM.exists() and JP_MAP.exists(), "the Japanese ROM or map is absent"
+)
+class JapaneseMapTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.rom = romtools.load(JP_ROM)
+        cls.entries = mapcheck.load(JP_MAP)
+
+    def test_the_map_holds_the_streams_the_build_needs(self):
+        self.assertGreaterEqual(len(self.entries), 2814)
+
+    def test_no_source_appears_twice(self):
+        self.assertEqual(mapcheck.duplicate_sources(self.entries), [])
+
+    def test_every_stream_decompresses(self):
+        self.assertEqual(mapcheck.undecodable(self.rom, self.entries), [])
+
+    def test_every_stream_stays_inside_the_rom(self):
+        for source, _ in self.entries:
+            self.assertLess(source, len(self.rom))
+
+    def test_the_lookup_stays_cheap_to_scan(self):
+        _, worst = mapcheck.scan_cost(self.entries)
+
+        self.assertLessEqual(worst, mapcheck.SCAN_BUDGET)
+
+    def test_the_streams_recovered_by_harvesting_are_present(self):
+        sources = {source for source, _ in self.entries}
+
+        for recovered in mapcheck.RECOVERED_JP:
+            self.assertIn(recovered, sources)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

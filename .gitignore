@@ -1,0 +1,17 @@
+# No ROM data, ever. Not the retail dumps, not anything built from them.
+roms/
+build/
+validated/
+validated-v2/
+validated-v3/
+*.sfc
+*.smc
+*.078
+*.bin
+*.ppm
+
+# Local scratch
+emu-stock/
+__pycache__/
+.ruff_cache/
+.DS_Store
