@@ -1303,11 +1303,18 @@ snes9x fork rather than as a patch file in this repository, so it could be built
 other snes9x change would be. It touches two files: `Map_SDD1DecompressedMap` in `memmap.cpp`, and the
 detection ahead of the mapper dispatch.
 
-I expect the same gap in [ares](https://github.com/ares-emulator/ares),
+The same gap almost certainly exists in [ares](https://github.com/ares-emulator/ares),
 [Mesen2](https://github.com/SourMesen/Mesen2), [bsnes](https://github.com/bsnes-emu/bsnes) and
-[Mednafen](https://mednafen.github.io/), and the same patch shape should apply to all of them. BizHawk
-embeds bsnes, so that one is covered by bsnes. I have not verified any of them against their own source
-yet, and I am not sending anything until I have.
+[Mednafen](https://mednafen.github.io/), and BizHawk inherits bsnes. I read all three GitHub codebases
+far enough to know what the work would be, and it is not one patch three times. Mesen2's mapping is
+explicit C++ and would need a per-bank registration, since each bank's lower half comes from a different
+place in the file. ares and bsnes are data-driven: a board string derived from the header selects a
+memory map defined in a manifest, so the change there is a board definition rather than mapper code.
+Mednafen is not on GitHub and takes a patch to its own tracker.
+
+I stopped there deliberately. snes9x is the one that matters for this project, the change is merged, and
+sending untested mapper code to three more projects would be worse than sending none. Each would need
+building and running against both conversions first, the way snes9x was, and none of that happened.
 
 ### Development-only, documented here rather than submitted
 
