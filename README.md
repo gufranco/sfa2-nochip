@@ -1156,12 +1156,18 @@ this kind of mistake survives. The Japanese image at 96 Mbit scores as HiROM, ta
 entirely and lands in `Map_ExtendedHiROMMap`, so the check never runs. Testing one region proved
 nothing about the other, and only building both caught it.
 
-I raised this with snes9x as [issue 1081](https://github.com/snes9xgit/snes9x/issues/1081). My
-`Map_SDD1DecompressedMap` implementation is ready in [`upstream/snes9x/`](upstream/snes9x/), and I am
-holding it back until the detection mechanism is agreed. Trusting a corrected header only helps
-conversions that fix theirs, which the circulating Star Ocean one does not, so a size-based fallback is
-probably needed as well. That is the maintainers' call to make, not mine, which is why I asked before
-sending a patch.
+I raised this with snes9x as [issue 1081](https://github.com/snes9xgit/snes9x/issues/1081). The
+implementation lives on the
+[`sdd1-decompressed-map`](https://github.com/gufranco/snes9x/tree/sdd1-decompressed-map) branch of a
+snes9x fork rather than as a patch file here, so it can be built and run the way any other snes9x
+change would be. It is two files: `Map_SDD1DecompressedMap` in `memmap.cpp`, and the detection ahead of
+the mapper dispatch.
+
+I am holding the pull request until the detection mechanism is agreed. Trusting a corrected header only
+helps conversions that fix theirs, which the circulating Star Ocean one does not, so the branch also
+keeps the size test for images that still declare the chip. Whether an emulator should recognise these
+by name, by size, or only by an honest header is the maintainers' call, not mine, which is why I asked
+before sending a patch.
 
 I expect the same gap in [ares](https://github.com/ares-emulator/ares),
 [Mesen2](https://github.com/SourMesen/Mesen2), [bsnes](https://github.com/bsnes-emu/bsnes) and
@@ -1289,8 +1295,9 @@ translate routine, the sample upload patch, and the Shin Akuma unlock for both r
 Both disassemblers had their opcode tables extracted programmatically from reference implementations
 rather than typed, and both are validated against known listings.
 
-[`upstream/snes9x/`](upstream/snes9x/) holds the proposed emulator change: the map implementation and a
-script that applies it to a checkout. The discussion is in
+The emulator change is not in this repository. It lives on the
+[`sdd1-decompressed-map`](https://github.com/gufranco/snes9x/tree/sdd1-decompressed-map) branch of a
+snes9x fork, where it is ordinary source rather than a patch script, and the discussion is in
 [snes9x issue 1081](https://github.com/snes9xgit/snes9x/issues/1081).
 
 I keep a snapshot of every state that passed the full matrix, source and assembly and maps and
@@ -1357,6 +1364,7 @@ No ROM data is distributed here. Everything in this repository operates on files
 The patches are derived from analysis of retail cartridges you supply.
 
 The tooling, the assembly and this document are released under the [MIT licence](LICENSE), so that the
-emulator mapper in [`upstream/snes9x/`](upstream/snes9x/) can be taken by projects whose own licences
+emulator mapper written for the [fork](https://github.com/gufranco/snes9x/tree/sdd1-decompressed-map)
+can be taken by projects whose own licences
 range from GPL to snes9x's non-commercial terms. That covers my own work and nothing else. It grants no
 rights in the game.
