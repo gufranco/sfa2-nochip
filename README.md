@@ -59,10 +59,11 @@ For Street Fighter Zero 2, use `asm/sdd1-bypass-jp.asm` and pass
 the stream table in [`jpstreams.py`](jpstreams.py) instead of a tagged ROM, because no tagged
 Japanese ROM exists.
 
-**Status:** 16 build combinations validated under emulation, both regions, cartridge and 96 Mbit forms.
-The USA builds also run on real hardware: the 96 Mbit chip-free image on a Game Doctor SF7, and both
-that image and the 4 MB patched cartridge on an FXPAK Pro. The Japanese builds have only ever run under
-emulation.
+**Status:** the USA builds run on real hardware, the 96 Mbit chip-free image on a Game Doctor SF7 and
+both that image and the 4 MB patched cartridge on an FXPAK Pro. The Japanese build is still settling:
+its stream table is recovered by observation rather than read from a tagged dump, and every screen that
+had never been driven kept exposing another missing stream. Section 15 is the record of that, including
+the theory that turned out to be wrong.
 
 ---
 
@@ -377,9 +378,9 @@ bytes decompressed**. Complete, authoritative, no guessing. I did not earn that 
 Nothing equivalent exists for Zero 2. The map I used for years was recovered heuristically and had
 **2,801 streams** in it. It was wrong the whole time. Section 15 is how I found out.
 
-The final table, [`jpstreams.py`](jpstreams.py), holds **2,816 streams**. It reached that number
-twice: once by harvesting, and then again after two wrong lengths were found and corrected, which is
-the second half of this section.
+The table, [`jpstreams.py`](jpstreams.py), holds **2,840 streams** at the time of writing, and the
+count has moved eight times. Every move came from somebody reaching a screen nobody had reached before.
+The rest of this section is that story, including a theory of mine that was wrong and did real damage.
 [`mapcheck.py`](mapcheck.py) validates any map offline: no duplicate sources, every stream decodes, and
 the worst key-scan distance stays inside budget.
 
@@ -932,23 +933,67 @@ ends where the cartridge stops reading. Record a length longer than the cartridg
 decoder keeps running into whatever follows, so the next stream's start falls inside the previous entry
 and never gets a key. Every request for it then misses, and the scan hands back an unrelated bank.
 
-Two entries were wrong that way, and each one cost a stream:
+I concluded that the fix was to shorten the covering entry so it ended exactly where the next stream
+began. That was wrong, and it took most of a day and five separate corruptions to find out.
 
-| entry | recorded | the cartridge asks for | hidden stream |
-|-------|----------|------------------------|---------------|
-| `$1A3041` | 5704 | 3168 | `$1A37FC`, 1024 bytes |
-| `$190B01` | 16688 | 5670 | `$19104C`, 8192 bytes |
+Streams overlap. The tagged USA dump proves it: 593 of its 2,773 in-bank pairs have one stream's decode
+running past the next stream's start. The cartridge also asks a single address for different amounts at
+different times. So an entry covering another entry's start is normal, and the only defect was the
+missing entry. Every trim I made was damage, and the hardware eventually reported all five of them:
 
-The first is the character select corruption. The second only appears once the faster sample upload is
-applied, because the changed timing walks the attract sequence down a different path, which is the same
-lesson as above arriving a second time and being no more welcome.
+| entry | I cut it to | the cartridge asks for |
+|-------|-------------|------------------------|
+| `$190B01` | 5670 | 8192 |
+| `$15E82D` | 5686 | 8192 |
+| `$16F177` | 3072 | 8192 |
+| `$18F7E3` | 5696 | 8192 |
+| `$192B62` | 5680 | 8192 |
 
-What settled it was building a proper oracle instead of guessing. Running the retail cartridge with the
-chip emulated and logging every DMA gives the complete list of what the hardware actually decompresses:
-3,889 transfers with a fixed A-bus, each one a stream request with an address and a size. Checking that
-list against the map named one address missing and four lengths that disagreed. Correcting the pair
-above took the worst scan from 3,597 slots to 6 and brought the table to 2,816 streams, against 2,815
-in the tagged USA dump.
+Each one corrupted a character portrait on the select screen. Only two operations on this table are
+safe: adding an address the cartridge asks for, and raising a length to what it asks for. Nothing else.
+
+What settled it was building a proper oracle. Run the retail cartridge with the chip emulated, log every
+DMA whose A-bus is fixed, which is the exact condition the chip decompresses under, and you have the
+hardware's own list of what a stream is. Nothing in the conversion is involved, so it cannot inherit a
+mistake from it.
+
+### Coverage is the whole problem
+
+The oracle answers what, never how much. A stream nobody asks for cannot be discovered, and a fighting
+game hides most of itself behind screens a script does not reach. The evidence set grew like this:
+
+| how it was driven | addresses recorded |
+|-------------------|--------------------|
+| the original scripted input | 42 |
+| a driver that sweeps the character roster | 274 |
+| a driver that forces a character and enters a fight | 579 |
+| a human playing for a few minutes | 790 |
+| the same human hovering two specific characters | 820 |
+| a human losing a fight and reaching game over | 1,513 |
+| an automated tour of the whole roster at three pacings | 1,560 |
+
+Each widening exposed streams the previous one could not see, and each of those was a screen somebody
+had photographed as broken. The last row is the interesting one: once the tour driver was written the
+loop closed, because it resets the console between characters, walks the cursor by reading the cursor
+value out of work RAM rather than by blind timing, and confirms only when it has arrived.
+
+Writing that driver took two mistakes worth naming. The first schedule pressed Start during frames 0 to
+900, when this game does not draw a picture until frame 1079, so every press landed during boot. The
+second was worse: the driver computed its inputs after the frame had already been emulated, so two
+completely different schedules produced byte-identical results, 61 addresses each. Identical output from
+changed input is the signal, and I should have read it immediately.
+
+### What must never be done
+
+Harvesting from the converted build. Once that build misses a lookup it programs meaningless DMA
+parameters, and a loop that records those as if they were streams will invent entries the cartridge
+never asks for and shorten entries it genuinely needs. One run of exactly that produced a table with
+eighteen invented streams and two truncations, and it would have shipped had the gate in section 17 not
+rejected it in under a second.
+
+Decompressing a candidate proves nothing either. The format carries no header, no length and no
+terminator, so any offset in the ROM decodes to something and returns exactly the number of bytes
+asked for. An address is a stream because the cartridge asks for it, and for no other reason.
 
 ### A wrong turn worth recording
 
@@ -1079,6 +1124,29 @@ What I am not claiming from these runs is a number. The 0.78 seconds in the tabl
 emulator figure, and nobody has put a frame counter on a real console. The hardware result is that the
 builds run, not that they run to a stopwatch.
 
+### Checks that do not need the game running
+
+Three of them, and between them they cover everything except whether the table is complete.
+
+**Every stream against the reference decompressor.** [`build/verify_streams.py`](build/verify_streams.py)
+sends all 2,815 USA and 2,840 Japanese streams through snes9x's own `sdd1emu.cpp` in a container and
+compares byte for byte with the Python decompressor. Both regions come back identical, in about thirteen
+seconds each.
+
+**Every stream inside the finished image.** [`build/verify_image.py`](build/verify_image.py) reads the
+12 MB image the way the console does: it walks the lookup tables in banks `$60` to `$63`, follows each
+translation, and compares the bytes actually sitting at the destination against what the chip produces.
+Zero unresolved lookups and zero wrong bytes. This is what rules out the re-layout having damaged
+something, and it is worth stating that it does: of 1,172,430 original bytes replaced in the window
+banks, every run sits inside a stream's compressed data except twelve, which are the header fields
+section 16 rewrites on purpose.
+
+**The build gate.** [`gate.py`](gate.py) refuses to produce an image unless the table has no repeated
+sources, every entry decodes to exactly its recorded length, the worst key scan stays inside its budget,
+and every request in [`requests_jp.py`](requests_jp.py) is covered with a length at least as large. That
+last clause is the one that earns its keep: 1,560 addresses recorded from working hardware, and it
+rejected a table that had invented eighteen streams and truncated two real ones.
+
 ### Reading the brightness metric
 
 It counts frames whose averaged pixel brightness is above 5 out of 255. It is never 100 per cent, and it
@@ -1094,11 +1162,20 @@ block integrity and lookup miss checks are for.
 
 ## 18. What is not verified
 
-**TL;DR.** The Japanese build on hardware, audio quality, and selecting Shin Akuma in-game. Three real
-gaps, said out loud rather than buried at the bottom.
+**TL;DR.** Whether the Japanese stream table is complete, the Japanese build on hardware, and audio
+quality. Said out loud rather than buried at the bottom.
 
-The Japanese build has never left the emulator. The USA builds have now run on real hardware, which is
-section 17, and that removes the largest doubt hanging over the mapper. It does not transfer to Street
+Completeness of the Japanese table. This is the honest headline. The table is correct for everything
+1,560 recorded hardware requests cover, and there is no way to prove it covers everything, because a
+stream nobody asks for cannot be found. Eight times during one day a screen that had never been driven
+produced another missing stream. The rate is falling and the automated roster tour now closes most of
+the gap, but anyone running this build should expect that a screen nobody has visited may still be
+wrong, and the fix when it happens is mechanical: drive the retail cartridge to that screen, read what
+it asks for, add it.
+
+The Japanese build has never left the emulator, and it is also the build whose table is still settling,
+so those two gaps compound. The USA builds have run on real hardware, which is section 17, and that
+removes the largest doubt hanging over the mapper. It does not transfer to Street
 Fighter Zero 2. That build differs in the seven hook addresses, in where the routine lives, and above
 all in its stream map, which is the one part that was rebuilt from scratch by harvesting rather than
 read out of a tagged ROM. Section 15 is the record of that map being confidently wrong once already.
@@ -1176,8 +1253,10 @@ files already knew what they were. It took a tool that had to decide without bei
 
 ## 20. Upstream contributions
 
-**TL;DR.** One change is genuinely needed by anyone who wants to run these images, and I have raised it
-with snes9x. Everything else I built is development-only and stays here.
+**TL;DR.** One change is genuinely needed by anyone who wants to run these images. I raised it as
+[snes9x issue 1081](https://github.com/snes9xgit/snes9x/issues/1081), and it was merged as
+[pull request 1082](https://github.com/snes9xgit/snes9x/pull/1082) on 15 August 2026, so current snes9x
+loads these conversions out of the box. Everything else I built is development-only and stays here.
 
 ### Merged into snes9x: support for S-DD1 games converted to run without the chip
 
@@ -1214,8 +1293,9 @@ because how these images should be identified is a maintainer's decision and not
 corrected header only helps conversions that fix theirs, which the circulating Star Ocean one does not,
 so a size test is needed as well for images that still declare the chip. OV2 chose that combination,
 size with the honest header as a fast path, and
-[merged the change](https://github.com/snes9xgit/snes9x/pull/1082) on 15 August 2026. It is in snes9x
-master, and the issue is closed.
+[merged it as pull request 1082](https://github.com/snes9xgit/snes9x/pull/1082) on 15 August 2026. It
+is in snes9x master, and [issue 1081](https://github.com/snes9xgit/snes9x/issues/1081) is closed with a
+note recording the detection placement and correcting a claim in my original description.
 
 The work was done on the
 [`sdd1-decompressed-map`](https://github.com/gufranco/snes9x/tree/sdd1-decompressed-map) branch of a
@@ -1282,15 +1362,36 @@ checksums the finished image.
 For the Japanese build, substitute `asm/sdd1-bypass-jp.asm`, and supply the stream map from
 [`jpstreams.py`](jpstreams.py) rather than a tagged ROM, since none exists for that region.
 
-### Checking a stream map
+### Building the release images
 
 ```
-python3 mapcheck.py roms/sfz2-jp-final.sfc
+python3 pack.py            # both regions into dist/, named with the version
+python3 pack.py jp         # one region
 ```
 
-Reports duplicate sources, streams that fail to decode, and the worst key-scan distance against its
-budget. A map that passes this can still be incomplete, which is what section 15 is about, but a map
-that fails it is definitely broken.
+`pack.py` runs the gate first and refuses to write anything if the table fails it, then produces
+`sfa2-usa-nochip-v<version>.sfc` and `sfz2-jp-nochip-v<version>.sfc` alongside a `SHA256SUMS` manifest.
+The version comes from [`version.py`](version.py), which `scripts/set-version.sh` rewrites during a
+release, so an image on disk always says which build of this project produced it. An unreleased build is
+marked `-dev` rather than pretending to be a version.
+
+Releases are cut by semantic-release from Conventional Commit messages, wired in
+[`.releaserc.json`](.releaserc.json) and run by the `release` job in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml). There is no changelog file: the notes live on
+the GitHub release, because this repository keeps exactly one markdown file.
+
+### Checking the stream table
+
+```
+python3 mapcheck.py roms/sfz2-jp-final.sfc     # shape of the table
+python3 gate.py                                 # the gate both regions must pass
+python3 build/verify_streams.py                 # every stream against the C reference
+python3 build/verify_image.py                   # every stream inside the finished image
+```
+
+The first reports duplicate sources, streams that fail to decode, and the worst key-scan distance. The
+other three are section 17. A table that passes all of them can still be incomplete, which is what
+section 15 is about, but one that fails any of them is definitely broken.
 
 ### Running the tests
 
@@ -1343,6 +1444,10 @@ container for each toolchain.
 | [`spcfast.py`](spcfast.py) | applies the sample upload patch |
 | [`shinakuma.py`](shinakuma.py) | applies the Shin Akuma unlock |
 | [`build.py`](build.py) | Docker wrapper around asar |
+| [`gate.py`](gate.py) | the checks an image must pass before it is written |
+| [`requests_jp.py`](requests_jp.py) | decompression requests recorded from working hardware |
+| [`pack.py`](pack.py) | builds the release images, named with the version |
+| [`version.py`](version.py) | the release number, rewritten by `scripts/set-version.sh` |
 
 Assembly that goes into the ROM lives in [`asm/`](asm/): the bypass patches for both regions, the shared
 translate routine, the sample upload patch, and the Shin Akuma unlock for both regions.
@@ -1410,6 +1515,11 @@ decompressor is tested against.
 - [Retroware, The Curious Case of Street Fighter Alpha 2 on the SNES](https://articles.retroware.com/2021/03/08/the-curious-case-of-street-fighter-alpha-2-on-the-snes/)
 - [snes9x](https://github.com/snes9xgit/snes9x), `sdd1emu.cpp` for the compression reference and `iplrom.cpp` for the S-SMP boot ROM listing
 - [Romhacking.net hack 7928](https://www.romhacking.net/hacks/7928/), Street Fighter Alpha 2 Ultra
+- [snes9x issue 1081](https://github.com/snes9xgit/snes9x/issues/1081), where the mapper support was
+  proposed and the detection mechanism agreed
+- [snes9x pull request 1082](https://github.com/snes9xgit/snes9x/pull/1082), merged 15 August 2026,
+  which is the change itself
+- [The fork it was written on](https://github.com/gufranco/snes9x/tree/sdd1-decompressed-map)
 
 ---
 
