@@ -378,9 +378,10 @@ bytes decompressed**. Complete, authoritative, no guessing. I did not earn that 
 Nothing equivalent exists for Zero 2. The map I used for years was recovered heuristically and had
 **2,801 streams** in it. It was wrong the whole time. Section 15 is how I found out.
 
-The table, [`jpstreams.py`](jpstreams.py), holds **2,840 streams** at the time of writing, and the
-count has moved eight times. Every move came from somebody reaching a screen nobody had reached before.
-The rest of this section is that story, including a theory of mine that was wrong and did real damage.
+The table, [`jpstreams.py`](jpstreams.py), holds **2,855 streams**, against 2,815 in the tagged USA
+dump. The count moved eleven times before it settled, and every move came from reaching a screen nobody
+had reached before. The rest of this section is that story, including a theory of mine that was wrong
+and did real damage.
 [`mapcheck.py`](mapcheck.py) validates any map offline: no duplicate sources, every stream decodes, and
 the worst key-scan distance stays inside budget.
 
@@ -971,11 +972,35 @@ game hides most of itself behind screens a script does not reach. The evidence s
 | the same human hovering two specific characters | 820 |
 | a human losing a fight and reaching game over | 1,513 |
 | an automated tour of the whole roster at three pacings | 1,560 |
+| the same tour at six pacings and two ways of advancing menus | 1,661 |
 
 Each widening exposed streams the previous one could not see, and each of those was a screen somebody
-had photographed as broken. The last row is the interesting one: once the tour driver was written the
-loop closed, because it resets the console between characters, walks the cursor by reading the cursor
-value out of work RAM rather than by blind timing, and confirms only when it has arrived.
+had photographed as broken. Once the tour driver existed the loop could close on its own, because it
+resets the console between characters, walks the cursor by reading the cursor value out of work RAM
+rather than by blind timing, and confirms only when it has arrived.
+
+### Why it took so long, and why it then stopped
+
+Every missing stream blocks the build at the screen that needs it, which stops it reaching anything
+beyond, which hides the next missing stream. That is why this came in one screen at a time for a day.
+Adding a single address, `$1A64D6`, took the converted build from 67 distinct requests to 496 and
+exposed five more behind it.
+
+Once that was understood the search is mechanical, and
+[`tools/converge_jp.py`](tools/converge_jp.py) does it: build all three Japanese variants, drive each
+through five input regimes, collect every address requested that is not a stream start, confirm it
+decodes to exactly the size asked for, add it, rebuild, repeat. It only ever adds. It converged in
+three rounds:
+
+| round | candidates | added | table |
+|-------|-----------|-------|-------|
+| 1 | 8 | 8 | 2,854 |
+| 2 | 1 | 1 | 2,855 |
+| 3 | 0 | 0 | converged |
+
+Convergence is not proof of completeness. It says that along every path five drivers can reach, across
+all three builds, the game never asks for anything the table lacks. A screen no driver reaches can still
+hide a stream, and the remedy is the same loop pointed at that screen.
 
 Writing that driver took two mistakes worth naming. The first schedule pressed Start during frames 0 to
 900, when this game does not draw a picture until frame 1079, so every press landed during boot. The
@@ -1089,9 +1114,9 @@ Results:
 | Japan | Shin Akuma | 2.60s | 2.60s | set |
 | Japan | both | **0.80s** | **0.80s** | set |
 
-Every build: **12,000 of 12,000 frames delivered**, zero dropped; **36 to 38 of 40 brightness samples
-lit**; three fight loads; **zero lookup misses**; **60 of 60 sample blocks byte-identical** to their
-ROM source. All eight chip-free images are exactly 12,582,912 bytes.
+Every build: **12,000 of 12,000 frames delivered**, zero dropped; **34 to 38 of 40 brightness samples
+lit**; three fight loads; **zero lookup misses** across all sixteen; **60 of 60 sample blocks
+byte-identical** to their ROM source. All eight chip-free images are exactly 12,582,912 bytes.
 
 The lookup counts are worth reading alongside the misses, because they say how far each build gets. The
 Japanese chip-free builds perform 3,863 lookups without the sound patch and 1,500 with it, the USA ones
