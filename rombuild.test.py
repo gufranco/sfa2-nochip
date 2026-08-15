@@ -1,4 +1,5 @@
 import importlib.util
+import itertools
 import unittest
 from pathlib import Path
 
@@ -95,9 +96,7 @@ class AllocationTest(unittest.TestCase):
         self.assertEqual(placed[0] >> 16, 0x41)
 
 
-@unittest.skipUnless(
-    PATCHED.exists() and TAGGED.exists(), "the patched rom is not built"
-)
+@unittest.skipUnless(PATCHED.exists() and TAGGED.exists(), "the patched rom is not built")
 class ImageTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -107,9 +106,7 @@ class ImageTest(unittest.TestCase):
 
     def test_the_image_is_the_declared_size(self):
         self.assertEqual(len(self.result.image), rombuild.IMAGE_SIZE)
-        self.assertEqual(
-            layout.bank_count(len(self.result.image)), rombuild.IMAGE_BANKS
-        )
+        self.assertEqual(layout.bank_count(len(self.result.image)), rombuild.IMAGE_BANKS)
 
     def test_the_lorom_view_returns_the_original(self):
         for bank in (0x00, 0x01, 0x25, 0x35, 0x3F):
@@ -169,15 +166,13 @@ class ImageTest(unittest.TestCase):
         for entry in crossing[:20]:
             expected = sdd1.decompress(self.rom, entry.source, entry.length).data
 
-            got = read_snes(
-                self.result.image, self.result.destinations[entry.index], entry.length
-            )
+            got = read_snes(self.result.image, self.result.destinations[entry.index], entry.length)
 
             self.assertEqual(got, expected, f"stream {entry.index}")
 
     def test_most_streams_stay_adjacent_in_map_order(self):
         adjacent = 0
-        for entry, following in zip(self.entries, self.entries[1:]):
+        for entry, following in itertools.pairwise(self.entries):
             here = self.result.destinations[entry.index]
             nxt = self.result.destinations[following.index]
             if here + entry.length == nxt:
@@ -200,13 +195,9 @@ class ImageTest(unittest.TestCase):
         )
 
         for index, part in enumerate(parts):
-            got = read_snes(
-                self.result.image, (rombuild.TABLE_BANK + index) << 16, layout.BANK
-            )
+            got = read_snes(self.result.image, (rombuild.TABLE_BANK + index) << 16, layout.BANK)
 
-            self.assertEqual(
-                got, part, f"table bank ${rombuild.TABLE_BANK + index:02X}"
-            )
+            self.assertEqual(got, part, f"table bank ${rombuild.TABLE_BANK + index:02X}")
 
     def test_the_final_stream_gets_a_length_so_it_has_a_table_entry(self):
         self.assertIsNotNone(self.entries[-1].length)
@@ -219,9 +210,7 @@ class ImageTest(unittest.TestCase):
             bank = 0xC0 + (entry.source >> 16)
             slot = entry.source & 0xFFFF
             for _ in range(0x10000):
-                offset = layout.snes_to_file(
-                    rombuild.TABLE_BANK, slot, rombuild.IMAGE_BANKS
-                )
+                offset = layout.snes_to_file(rombuild.TABLE_BANK, slot, rombuild.IMAGE_BANKS)
                 if image[offset] == bank:
                     break
                 slot = (slot + 1) & 0xFFFF

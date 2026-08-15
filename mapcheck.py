@@ -65,7 +65,7 @@ def undecodable(rom, entries):
     for source, length in entries:
         try:
             sdd1.decompress(rom, source, length)
-        except Exception:
+        except (sdd1.TruncatedStream, IndexError, ValueError):
             broken.append(source)
     return broken
 
@@ -75,7 +75,7 @@ def scan_cost(entries):
         return 0, 0
     keys = [window_key(source) for source, _ in entries]
     slots = sdd1tables.allocate(keys)
-    distances = [(slot - addr) & 0xFFFF for (_, addr), slot in zip(keys, slots)]
+    distances = [(slot - addr) & 0xFFFF for (_, addr), slot in zip(keys, slots, strict=True)]
     return int(statistics.median(distances)), max(distances)
 
 

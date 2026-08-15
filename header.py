@@ -60,10 +60,7 @@ def header_positions(image):
     found = []
     at = image.find(title)
     while at != -1:
-        if (
-            at + HEADER_LENGTH <= len(image)
-            and image[at + MAP_MODE] in PLAUSIBLE_MAP_MODES
-        ):
+        if at + HEADER_LENGTH <= len(image) and image[at + MAP_MODE] in PLAUSIBLE_MAP_MODES:
             found.append(at)
         at = image.find(title, at + 1)
     return found

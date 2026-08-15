@@ -154,9 +154,7 @@ def build(rom, entries, image_banks=IMAGE_BANKS):
             image_banks,
         )
 
-    for index, part in enumerate(
-        (tables.key, tables.dest_low, tables.dest_high, tables.dest_bank)
-    ):
+    for index, part in enumerate((tables.key, tables.dest_low, tables.dest_high, tables.dest_bank)):
         place(image, TABLE_BANK + index, 0x0000, part, image_banks)
 
     for entry in entries:
@@ -188,10 +186,7 @@ def main():
     graphics = sum(e.length for e in entries)
     banks = {result.destinations[e.index] >> 16 for e in entries}
     print(f"  graphics  {graphics:,} bytes across {len(banks)} banks")
-    print(
-        f"  image     {len(result.image):,} bytes "
-        f"({len(result.image) * 8 // 1048576} Mbit)"
-    )
+    print(f"  image     {len(result.image):,} bytes ({len(result.image) * 8 // 1048576} Mbit)")
 
     Path(sys.argv[3]).write_bytes(result.image)
     print(f"  wrote {sys.argv[3]}")

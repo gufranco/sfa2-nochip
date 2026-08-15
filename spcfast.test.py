@@ -59,7 +59,7 @@ class DriverTest(unittest.TestCase):
         self.assertGreater(len(data), 0)
 
     def test_the_block_header_parse_is_inside_the_patch(self):
-        at, data = self.run_covering(spcfast.DRIVER_BASE + spcfast.BLOCK_HEADER)
+        at, _ = self.run_covering(spcfast.DRIVER_BASE + spcfast.BLOCK_HEADER)
 
         self.assertLessEqual(at, spcfast.DRIVER_BASE + spcfast.BLOCK_HEADER)
 
@@ -171,9 +171,7 @@ class RetailRomTest(unittest.TestCase):
         base = spcfast.DRIVER_BASE
         listing = [
             i.text
-            for i in spc700.disassemble(
-                patched[base : base + 0x10000], 0x0EC3, 0x0EC3, count=3
-            )
+            for i in spc700.disassemble(patched[base : base + 0x10000], 0x0EC3, 0x0EC3, count=3)
         ]
 
         self.assertEqual(listing[0], "mov a,$0e6")
@@ -189,9 +187,7 @@ class RetailRomTest(unittest.TestCase):
     def test_the_checksum_is_restamped(self):
         patched = spcfast.apply(self.usa)
 
-        self.assertEqual(
-            patched[0x7FDE] | (patched[0x7FDF] << 8), spcfast.checksum(patched)
-        )
+        self.assertEqual(patched[0x7FDE] | (patched[0x7FDF] << 8), spcfast.checksum(patched))
 
 
 if __name__ == "__main__":

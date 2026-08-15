@@ -42,7 +42,7 @@ def stage_rom(source, work_dir, output_name):
 
 def run(args):
     print("  $ " + " ".join(args), flush=True)
-    result = subprocess.run(args, text=True)
+    result = subprocess.run(args, text=True, check=False)
     return result.returncode
 
 

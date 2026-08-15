@@ -104,9 +104,7 @@ class Cpu:
         while True:
             self.steps += 1
             if self.steps > self.step_limit:
-                raise StepLimit(
-                    f"stopped after {self.steps} steps at ${self.pb:02X}:{self.pc:04X}"
-                )
+                raise StepLimit(f"stopped after {self.steps} steps at ${self.pb:02X}:{self.pc:04X}")
             opcode = self.fetch8()
             if opcode in (0x6B, 0x60):
                 if depth == 0:
@@ -254,14 +252,10 @@ class Cpu:
             self.compare(self.acc(), self.fetch8() if self.m8 else self.fetch16())
             return
         if opcode == 0xD9:
-            self.compare(
-                self.acc(), self.read_width((self.db << 16) + self.fetch16() + self.y)
-            )
+            self.compare(self.acc(), self.read_width((self.db << 16) + self.fetch16() + self.y))
             return
         if opcode == 0xDD:
-            self.compare(
-                self.acc(), self.read_width((self.db << 16) + self.fetch16() + self.x)
-            )
+            self.compare(self.acc(), self.read_width((self.db << 16) + self.fetch16() + self.x))
             return
         if opcode == 0xCD:
             self.compare(self.acc(), self.read_width((self.db << 16) + self.fetch16()))
@@ -281,9 +275,7 @@ class Cpu:
         if opcode == 0xB0:
             self.branch(self.c)
             return
-        raise Unsupported(
-            f"opcode {opcode:#04x} at ${self.pb:02X}:{(self.pc - 1) & 0xFFFF:04X}"
-        )
+        raise Unsupported(f"opcode {opcode:#04x} at ${self.pb:02X}:{(self.pc - 1) & 0xFFFF:04X}")
 
     def read_width(self, address):
         return self.read8(address) if self.m8 else self.read16(address)

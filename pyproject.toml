@@ -1,0 +1,32 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["build", "validated", "validated-v2", "validated-v3"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "W",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "RUF",
+  "PL",
+  "BLE",
+  "C4",
+]
+ignore = [
+  "PLR0913",
+  "PLR2004",
+  "PLR0912",
+  "PLR0915",
+  "PLR0911",
+  "PLC0415",
+  "PLR0917",
+  "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*.test.py" = ["PLR2004"]

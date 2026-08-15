@@ -1,7 +1,6 @@
 import importlib.util
 import tempfile
 import unittest
-import zlib
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).resolve().parent / "romtools.py"

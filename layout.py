@@ -43,9 +43,7 @@ def interleave(logical):
     for bank in range(banks):
         base = bank * BANK
         image[bank * HALF : (bank + 1) * HALF] = logical[base + HALF : base + BANK]
-        image[(bank + banks) * HALF : (bank + banks + 1) * HALF] = logical[
-            base : base + HALF
-        ]
+        image[(bank + banks) * HALF : (bank + banks + 1) * HALF] = logical[base : base + HALF]
     return bytes(image)
 
 
@@ -54,8 +52,6 @@ def deinterleave(image):
     logical = bytearray(len(image))
     for bank in range(banks):
         base = bank * BANK
-        logical[base : base + HALF] = image[
-            (bank + banks) * HALF : (bank + banks + 1) * HALF
-        ]
+        logical[base : base + HALF] = image[(bank + banks) * HALF : (bank + banks + 1) * HALF]
         logical[base + HALF : base + BANK] = image[bank * HALF : (bank + 1) * HALF]
     return bytes(logical)

@@ -67,11 +67,7 @@ def translate(memory, source, channel=0x00, entry=None, dmap=ARMED_DMAP, **regis
 
     cpu.call(entry if entry is not None else ENTRY_POINTS[channel])
 
-    destination = (
-        memory.ram[base + 2]
-        | (memory.ram[base + 3] << 8)
-        | (memory.ram[base + 4] << 16)
-    )
+    destination = memory.ram[base + 2] | (memory.ram[base + 3] << 8) | (memory.ram[base + 4] << 16)
     return Outcome(destination, memory.ram[base], cpu)
 
 

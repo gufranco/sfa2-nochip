@@ -173,9 +173,7 @@ class ReferenceBuildTest(unittest.TestCase):
         for source, _ in STAR_OCEAN_STREAMS:
             memory = self.run_reference(source)
 
-            self.assertFalse(
-                memory.triggered[patchrun.DMA_BASE] & patchrun.FIXED_ADDRESS_BIT
-            )
+            self.assertFalse(memory.triggered[patchrun.DMA_BASE] & patchrun.FIXED_ADDRESS_BIT)
 
     def test_the_reference_routine_starts_a_transfer(self):
         memory = self.run_reference(STAR_OCEAN_STREAMS[0][0])

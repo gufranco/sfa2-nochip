@@ -70,7 +70,7 @@ def allocate(keys):
 
 def verify(keys, placed):
     table = {}
-    for (bank, _), slot in zip(keys, placed):
+    for (bank, _), slot in zip(keys, placed, strict=True):
         if slot in table:
             raise PlacementError(f"slot {slot:#06x} used twice")
         table[slot] = bank
@@ -94,7 +94,7 @@ def build(pairs):
     dest_high = bytearray(SLOTS)
     dest_bank = bytearray(SLOTS)
 
-    for (bank, _), slot, (_, destination) in zip(keys, slots, pairs):
+    for (bank, _), slot, (_, destination) in zip(keys, slots, pairs, strict=True):
         target_bank = destination >> 16
         if target_bank == 0:
             raise ValueError(
@@ -106,6 +106,4 @@ def build(pairs):
         dest_high[slot] = (destination >> 8) & 0xFF
         dest_bank[slot] = target_bank
 
-    return Tables(
-        bytes(key), bytes(dest_low), bytes(dest_high), bytes(dest_bank), slots
-    )
+    return Tables(bytes(key), bytes(dest_low), bytes(dest_high), bytes(dest_bank), slots)

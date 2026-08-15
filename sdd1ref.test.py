@@ -27,7 +27,7 @@ def docker_available():
     if not shutil.which("docker"):
         return False
     return (
-        subprocess.run(["docker", "info"], capture_output=True, text=True).returncode
+        subprocess.run(["docker", "info"], capture_output=True, text=True, check=False).returncode
         == 0
     )
 
@@ -84,7 +84,7 @@ class DifferentialTest(unittest.TestCase):
     def assert_agrees(self, rom, cases):
         expected = ref.reference_outputs(rom, cases)
 
-        for (offset, length), want in zip(cases, expected):
+        for (offset, length), want in zip(cases, expected, strict=True):
             got = sdd1.decompress(rom, offset, length).data
             self.assertEqual(got, want, f"mismatch at offset {offset:#x}")
 

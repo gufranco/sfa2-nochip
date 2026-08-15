@@ -1,3 +1,4 @@
+import itertools
 import sys
 from collections import namedtuple
 from pathlib import Path
@@ -46,7 +47,7 @@ def build_map(tagged, gfx_size=None):
 
 def audit(rom, entries):
     report = {"measured": 0, "packed": 0, "padded": 0, "overrun": 0, "skipped": 0}
-    for entry, following in zip(entries, entries[1:]):
+    for entry, following in itertools.pairwise(entries):
         if entry.length is None or not 0 < following.source - entry.source < BANK_SIZE:
             report["skipped"] += 1
             continue
@@ -70,9 +71,7 @@ def rebuild(rom, entries, gfx_size=None):
     blob = bytearray(gfx_size)
     for entry in entries:
         if entry.target + entry.length > gfx_size:
-            raise ValueError(
-                f"stream {entry.index} runs past the end of a {gfx_size} byte blob"
-            )
+            raise ValueError(f"stream {entry.index} runs past the end of a {gfx_size} byte blob")
         data = sdd1.decompress(rom, entry.source, entry.length).data
         blob[entry.target : entry.target + entry.length] = data
     return bytes(blob)
@@ -106,15 +105,9 @@ def main():
     report = audit(rom, entries)
     measured = report["measured"] or 1
     print("\n  packing check, does each stream end where the next begins")
-    print(
-        f"    packed  {report['packed']:>5}  {100 * report['packed'] / measured:5.2f}%"
-    )
-    print(
-        f"    padded  {report['padded']:>5}  {100 * report['padded'] / measured:5.2f}%"
-    )
-    print(
-        f"    overrun {report['overrun']:>5}  {100 * report['overrun'] / measured:5.2f}%"
-    )
+    print(f"    packed  {report['packed']:>5}  {100 * report['packed'] / measured:5.2f}%")
+    print(f"    padded  {report['padded']:>5}  {100 * report['padded'] / measured:5.2f}%")
+    print(f"    overrun {report['overrun']:>5}  {100 * report['overrun'] / measured:5.2f}%")
 
     if len(sys.argv) > 3:
         complete = entries[:-1]

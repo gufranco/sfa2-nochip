@@ -28,9 +28,7 @@ class SignatureTest(unittest.TestCase):
         self.assertEqual(shinakuma.GATE[:3], bytes([0x08, 0xC2, 0x30]))
 
     def test_the_signature_ends_by_storing_the_unlock_flag(self):
-        self.assertEqual(
-            shinakuma.GATE[-6:], bytes([0xA9, 0x4B, 0x4A, 0x8D, 0x09, 0x1B])
-        )
+        self.assertEqual(shinakuma.GATE[-6:], bytes([0xA9, 0x4B, 0x4A, 0x8D, 0x09, 0x1B]))
 
     def test_the_branch_lands_on_the_unconditional_store(self):
         landing = shinakuma.PRECONDITION + 2 + shinakuma.BRANCH[1]
@@ -43,10 +41,7 @@ class SignatureTest(unittest.TestCase):
     def test_the_button_combination_is_l_x_y_and_start(self):
         self.assertEqual(
             shinakuma.COMBINATION,
-            shinakuma.BUTTON_L
-            | shinakuma.BUTTON_X
-            | shinakuma.BUTTON_Y
-            | shinakuma.BUTTON_START,
+            shinakuma.BUTTON_L | shinakuma.BUTTON_X | shinakuma.BUTTON_Y | shinakuma.BUTTON_START,
         )
 
 
@@ -88,9 +83,7 @@ class ApplyTest(unittest.TestCase):
         changed = {i for i in range(len(rom)) if rom[i] != patched[i]}
         site = 0x00EC6E + shinakuma.PRECONDITION
         allowed = {site, site + 1} | set(
-            range(
-                shinakuma.spcfast.CHECKSUM_FIELD, shinakuma.spcfast.CHECKSUM_FIELD + 4
-            )
+            range(shinakuma.spcfast.CHECKSUM_FIELD, shinakuma.spcfast.CHECKSUM_FIELD + 4)
         )
 
         self.assertTrue(changed.issubset(allowed))
@@ -123,9 +116,7 @@ class DisassemblyTest(unittest.TestCase):
     def test_the_stock_gate_disassembles_to_the_documented_listing(self):
         listing = [
             instruction.text
-            for instruction in wdc65816.disassemble(
-                shinakuma.GATE, 0, 0xC0EC6E, m=False, x=False
-            )
+            for instruction in wdc65816.disassemble(shinakuma.GATE, 0, 0xC0EC6E, m=False, x=False)
         ]
 
         self.assertEqual(
@@ -155,9 +146,7 @@ class DisassemblyTest(unittest.TestCase):
     def test_the_patched_gate_branches_straight_to_the_store(self):
         patched = bytearray(shinakuma.GATE)
         patched[shinakuma.PRECONDITION : shinakuma.PRECONDITION + 2] = shinakuma.BRANCH
-        listing = list(
-            wdc65816.disassemble(bytes(patched), 0, 0xC0EC6E, count=3, m=False, x=False)
-        )
+        listing = list(wdc65816.disassemble(bytes(patched), 0, 0xC0EC6E, count=3, m=False, x=False))
 
         self.assertEqual([i.text for i in listing], ["php", "rep #$30", "bra $ec97"])
 
@@ -187,9 +176,7 @@ class RetailRomTest(unittest.TestCase):
         changed = {i for i in range(len(patched)) if patched[i] != self.usa[i]}
         site = 0x00EC6E + shinakuma.PRECONDITION
         allowed = {site, site + 1} | set(
-            range(
-                shinakuma.spcfast.CHECKSUM_FIELD, shinakuma.spcfast.CHECKSUM_FIELD + 4
-            )
+            range(shinakuma.spcfast.CHECKSUM_FIELD, shinakuma.spcfast.CHECKSUM_FIELD + 4)
         )
 
         self.assertTrue(changed.issubset(allowed))

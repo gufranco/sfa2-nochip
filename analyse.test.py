@@ -19,7 +19,7 @@ class CompressedShareTest(unittest.TestCase):
     def test_random_data_counts_as_compressed(self):
         import os
 
-        share, total, blocks = an.compressed_share(os.urandom(65536 * 4))
+        share, total, _ = an.compressed_share(os.urandom(65536 * 4))
 
         self.assertEqual(share, 4)
         self.assertEqual(total, 4)

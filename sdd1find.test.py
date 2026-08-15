@@ -39,9 +39,7 @@ class BitmapTest(unittest.TestCase):
         rng = random.Random(4)
 
         rejected = sum(
-            0
-            if find.probe(bitmap, bytes(rng.randrange(256) for _ in range(4)), bits=20)
-            else 1
+            0 if find.probe(bitmap, bytes(rng.randrange(256) for _ in range(4)), bits=20) else 1
             for _ in range(200)
         )
 
@@ -131,9 +129,7 @@ class FindStreamsTest(unittest.TestCase):
     def test_neighbouring_offsets_do_not_masquerade_as_the_stream(self):
         reference = self.build_reference()
 
-        hits = find.find_streams(
-            self.rom, reference, start=KNOWN_STREAM - 8, stop=KNOWN_STREAM
-        )
+        hits = find.find_streams(self.rom, reference, start=KNOWN_STREAM - 8, stop=KNOWN_STREAM)
 
         self.assertEqual(hits, [])
 

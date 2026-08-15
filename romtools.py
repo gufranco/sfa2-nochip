@@ -9,9 +9,7 @@ GD_PART = re.compile(r"\.078$", re.IGNORECASE)
 def has_copier_header(data):
     if len(data) <= COPIER_HEADER:
         return False
-    return (len(data) - COPIER_HEADER) % 32768 == 0 or len(
-        data
-    ) % 32768 == COPIER_HEADER
+    return (len(data) - COPIER_HEADER) % 32768 == 0 or len(data) % 32768 == COPIER_HEADER
 
 
 def strip_header(data):
@@ -37,10 +35,7 @@ def deflate_ratio(block):
 
 
 def block_ratios(data, block=65536):
-    return [
-        deflate_ratio(data[i : i + block])
-        for i in range(0, len(data) - block + 1, block)
-    ]
+    return [deflate_ratio(data[i : i + block]) for i in range(0, len(data) - block + 1, block)]
 
 
 def chunk_index(data, chunk=1024, stride=512):

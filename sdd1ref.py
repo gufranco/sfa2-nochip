@@ -54,18 +54,17 @@ def decode_response(blob, cases):
 def build_image(quiet=True):
     stream = subprocess.DEVNULL if quiet else None
     return subprocess.run(
-        build_image_command(), stdout=stream, stderr=stream
+        build_image_command(), stdout=stream, stderr=stream, check=False
     ).returncode
 
 
 def reference_outputs(rom, cases):
     result = subprocess.run(
-        run_command(), input=encode_request(rom, cases), capture_output=True
+        run_command(), input=encode_request(rom, cases), capture_output=True, check=False
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"reference decompressor exited {result.returncode}: "
-            f"{result.stderr[:200]!r}"
+            f"reference decompressor exited {result.returncode}: {result.stderr[:200]!r}"
         )
     return decode_response(result.stdout, cases)
 
@@ -73,7 +72,7 @@ def reference_outputs(rom, cases):
 def compare(rom, cases):
     expected = reference_outputs(rom, cases)
     mismatches = []
-    for (offset, length), want in zip(cases, expected):
+    for (offset, length), want in zip(cases, expected, strict=True):
         try:
             got = sdd1.decompress(rom, offset, length).data
         except sdd1.TruncatedStream:
@@ -81,7 +80,7 @@ def compare(rom, cases):
             continue
         if got != want:
             first = next(
-                (i for i, (a, b) in enumerate(zip(got, want)) if a != b), len(want)
+                (i for i, (a, b) in enumerate(zip(got, want, strict=True)) if a != b), len(want)
             )
             mismatches.append((offset, length, f"first differing byte at {first}"))
     return mismatches
@@ -119,7 +118,7 @@ def main():
         print(f"[fail] {len(mismatches)}/{len(cases)} cases differ")
         return 1
 
-    print(f"[ok] {len(cases)} cases identical to snes9x {IMAGE.split('-')[-1]}")
+    print(f"[ok] {len(cases)} cases identical to snes9x {IMAGE.rsplit('-', maxsplit=1)[-1]}")
     return 0
 
 

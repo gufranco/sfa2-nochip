@@ -54,7 +54,7 @@ def main():
         roms[name] = rt.join_game_doctor(p) if p.is_dir() else rt.load(p)
 
     print("== size and compressed-region profile")
-    so_comp = report("Star Ocean original (chip)", roms["so_orig"])
+    report("Star Ocean original (chip)", roms["so_orig"])
     report("Star Ocean patched (no chip)", roms["so_patched"])
     sfa_comp = report("SFA2 final (chip)", roms["sfa2_final"])
     report("SFA2 prototype (no chip)", roms["sfa2_proto"])
@@ -62,20 +62,14 @@ def main():
     print("\n== what the Star Ocean patch actually added")
     new, total = novelty(roms["so_patched"], roms["so_orig"])
     new_bytes = new * 1024
-    print(
-        f"  1K chunks in the patched build absent from the original: {new:,}/{total:,}"
-    )
+    print(f"  1K chunks in the patched build absent from the original: {new:,}/{total:,}")
     print(f"  new data: {new_bytes:,} bytes ({mbit(new_bytes):.1f} Mbit)")
 
     whole_rom = len(roms["so_patched"]) / len(roms["so_orig"])
     print(f"  whole-ROM growth factor: {whole_rom:.2f}x  (48 Mbit -> 96 Mbit)")
+    print("  note: the patch KEEPS the compressed data and appends the decompressed copy,")
     print(
-        "  note: the patch KEEPS the compressed data and appends the decompressed copy,"
-    )
-    print(
-        "        so new data ({:,} bytes) is the decompressed output, not a replacement.".format(
-            new_bytes
-        )
+        f"        so new data ({new_bytes:,} bytes) is the decompressed output, not a replacement."
     )
 
     print("\n== projection for SFA2")

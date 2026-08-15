@@ -125,7 +125,7 @@ class RealMapTest(unittest.TestCase):
         keys = [tables.source_key(e.source) for e in self.entries]
 
         placed = tables.allocate(keys)
-        exact = sum(1 for (_, addr), slot in zip(keys, placed) if addr == slot)
+        exact = sum(1 for (_, addr), slot in zip(keys, placed, strict=True) if addr == slot)
 
         self.assertGreater(exact / len(placed), 0.9)
 

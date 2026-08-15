@@ -1,4 +1,5 @@
 import importlib.util
+import itertools
 import unittest
 from pathlib import Path
 
@@ -107,7 +108,7 @@ class RealMapTest(unittest.TestCase):
         self.assertEqual(self.entries[-1].target, EXPECTED_GFX_BYTES)
 
     def test_targets_tile_the_graphics_blob_without_gaps(self):
-        for previous, entry in zip(self.entries, self.entries[1:]):
+        for previous, entry in itertools.pairwise(self.entries):
             self.assertEqual(previous.target + previous.length, entry.target)
 
     def test_every_stream_decompresses_from_the_untagged_rom(self):

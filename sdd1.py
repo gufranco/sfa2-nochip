@@ -215,9 +215,7 @@ def decompress(rom, offset, length):
     def get_bit(plane):
         nonlocal stream, valid, pos
         history = prev[plane]
-        context = (
-            ((plane & 1) << 4) | ((history & high_mask) >> 5) | (history & low_mask)
-        )
+        context = ((plane & 1) << 4) | ((history & high_mask) >> 5) | (history & low_mask)
         state = states[context]
         code_size, mps_next, lps_next = EVOLUTION[state]
 

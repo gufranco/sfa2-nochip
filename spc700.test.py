@@ -1,4 +1,5 @@
 import importlib.util
+import itertools
 import unittest
 from pathlib import Path
 
@@ -172,9 +173,7 @@ class IplRomTest(unittest.TestCase):
     def test_the_ipl_rom_disassembles_to_its_documented_listing(self):
         produced = [
             (instruction.address, instruction.text)
-            for instruction in spc700.disassemble(
-                IPL_ROM, 0, 0xFFC0, count=len(IPL_EXPECTED)
-            )
+            for instruction in spc700.disassemble(IPL_ROM, 0, 0xFFC0, count=len(IPL_EXPECTED))
         ]
 
         self.assertEqual(produced, IPL_EXPECTED)
@@ -182,9 +181,7 @@ class IplRomTest(unittest.TestCase):
     def test_the_listing_covers_every_byte_but_the_reset_vector(self):
         total = sum(
             instruction.size
-            for instruction in spc700.disassemble(
-                IPL_ROM, 0, 0xFFC0, count=len(IPL_EXPECTED)
-            )
+            for instruction in spc700.disassemble(IPL_ROM, 0, 0xFFC0, count=len(IPL_EXPECTED))
         )
 
         self.assertEqual(total, len(IPL_ROM) - 2)
@@ -199,7 +196,7 @@ class DisassembleTest(unittest.TestCase):
     def test_addresses_advance_by_each_instruction_size(self):
         listing = list(spc700.disassemble(IPL_ROM, 0, 0xFFC0, count=6))
 
-        for previous, following in zip(listing, listing[1:]):
+        for previous, following in itertools.pairwise(listing):
             self.assertEqual(following.address, previous.address + previous.size)
 
     def test_the_listing_stops_at_the_end_of_the_data(self):

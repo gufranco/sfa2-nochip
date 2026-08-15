@@ -61,15 +61,14 @@ def window(rom, offset, back=RESYNC_BACK, forward=RESYNC_FORWARD):
                 listing = cpu.disassemble(
                     rom[: offset + forward], start, lorom_address(start), m=m, x=x
                 )
-                if any(i.offset == offset for i in listing):
-                    if best is None or distance > best[0]:
-                        best = (distance, start, m, x)
+                if any(i.offset == offset for i in listing) and (
+                    best is None or distance > best[0]
+                ):
+                    best = (distance, start, m, x)
     if best is None:
         return cpu.disassemble(rom[: offset + forward], offset, lorom_address(offset))
     _, start, m, x = best
-    return cpu.disassemble(
-        rom[: offset + forward], start, lorom_address(start), m=m, x=x
-    )
+    return cpu.disassemble(rom[: offset + forward], start, lorom_address(start), m=m, x=x)
 
 
 def main():

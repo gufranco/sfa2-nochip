@@ -321,9 +321,7 @@ LONG_MODES = {
 
 RELATIVE_MODES = {"relative", "relativeWord"}
 
-Instruction = namedtuple(
-    "Instruction", "address offset opcode mnemonic mode operand size text"
-)
+Instruction = namedtuple("Instruction", "address offset opcode mnemonic mode operand size text")
 
 
 class Truncated(Exception):
@@ -369,11 +367,7 @@ def decode(data, offset, address, m=True, x=True):
     if offset + 1 + width > len(data):
         raise Truncated(offset)
 
-    operand = (
-        int.from_bytes(data[offset + 1 : offset + 1 + width], "little")
-        if width
-        else None
-    )
+    operand = int.from_bytes(data[offset + 1 : offset + 1 + width], "little") if width else None
     size = 1 + width
     text = render(mode, operand, address, size, width)
     return Instruction(

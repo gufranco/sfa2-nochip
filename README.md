@@ -314,10 +314,11 @@ For an image of `N` 64 KB banks:
 BANK = 0x10000
 HALF = 0x8000
 
+
 def snes_to_file(bank, addr, banks):
     if addr < HALF:
-        return (bank + banks) * HALF + addr      # low half lives a whole ROM away
-    return bank * HALF + (addr - HALF)           # high half is plain LoROM
+        return (bank + banks) * HALF + addr  # low half lives a whole ROM away
+    return bank * HALF + (addr - HALF)  # high half is plain LoROM
 ```
 
 The high half of each bank is where LoROM would put it. The low half of each bank lives `N` half-banks
@@ -329,6 +330,7 @@ Banks `$C0` and above follow a second rule, because that is where the window liv
 WINDOW_FIRST_BANK = 0xC0
 WINDOW_LOW_BASE = 0x80
 WINDOW_HIGH_BASE = 0x00
+
 
 def window_to_file(bank, addr, banks):
     offset = bank - WINDOW_FIRST_BANK
