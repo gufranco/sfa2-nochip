@@ -83,11 +83,14 @@ extern "C" void sf_note_read(uint32 address)
         scan_run = 0;
     }
     if (bank == 0x60 && last_read_bank != 0x60 && getenv("SFSCAN")) {
-        printf("SCAN addr=%04X ch0=%02X:%04X:%u ch1=%02X:%04X:%u ch7=%02X:%04X:%u\n",
+        printf("SCAN addr=%04X ch0=%02X:%04X:%u:fixed%d ch1=%02X:%04X:%u:fixed%d ch7=%02X:%04X:%u:fixed%d\n",
                (unsigned)(address & 0xFFFF),
                (unsigned)DMA[0].ABank, (unsigned)DMA[0].AAddress, (unsigned)DMA[0].TransferBytes,
+               (int)DMA[0].AAddressFixed,
                (unsigned)DMA[1].ABank, (unsigned)DMA[1].AAddress, (unsigned)DMA[1].TransferBytes,
-               (unsigned)DMA[7].ABank, (unsigned)DMA[7].AAddress, (unsigned)DMA[7].TransferBytes);
+               (int)DMA[1].AAddressFixed,
+               (unsigned)DMA[7].ABank, (unsigned)DMA[7].AAddress, (unsigned)DMA[7].TransferBytes,
+               (int)DMA[7].AAddressFixed);
     }
     last_read_bank = bank;
 }

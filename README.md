@@ -56,7 +56,7 @@ Steps 1 and 2 alone give a patched retail cartridge that still needs the chip bu
 four give the chip-free 96 Mbit image. Order matters, and section 21 explains why.
 
 For Street Fighter Zero 2, use `asm/sdd1-bypass-jp.asm` and pass
-[`maps/sfz2-jp.json`](maps/sfz2-jp.json) to `rombuild.py` instead of a tagged ROM, because no tagged
+the stream table in [`jpstreams.py`](jpstreams.py) instead of a tagged ROM, because no tagged
 Japanese ROM exists.
 
 **Status:** 16 build combinations validated under emulation, both regions, cartridge and 96 Mbit forms.
@@ -375,7 +375,9 @@ bytes decompressed**. Complete, authoritative, no guessing. I did not earn that 
 Nothing equivalent exists for Zero 2. The map I used for years was recovered heuristically and had
 **2,801 streams** in it. It was wrong the whole time. Section 15 is how I found out.
 
-The final map, [`maps/sfz2-jp.json`](maps/sfz2-jp.json), holds **2,814 streams**.
+The final table, [`jpstreams.py`](jpstreams.py), holds **2,816 streams**. It reached that number
+twice: once by harvesting, and then again after two wrong lengths were found and corrected, which is
+the second half of this section.
 [`mapcheck.py`](mapcheck.py) validates any map offline: no duplicate sources, every stream decodes, and
 the worst key-scan distance stays inside budget.
 
@@ -911,11 +913,53 @@ emulator to log the address every lookup asks for and how many slots it walks. A
 steps is a miss, and the DMA registers at that instant hand over the exact source and transfer size.
 Feed those back into the map, rebuild, repeat until nothing misses.
 
-I recovered **13 streams** that way. They are listed as `RECOVERED_JP` in [`mapcheck.py`](mapcheck.py).
+I recovered **13 streams** that way, and the build came up.
 
 One more thing I learned the hard way: the map has to be harvested against the build that will ship.
 Harvesting against the bypass-only ROM converged nicely, and then adding the faster sample upload shifted
 the attract timing enough to walk a different path and ask for two more streams.
+
+### It was still wrong, and gameplay is what found it
+
+The build booted, played its attract sequence and passed every check I had, and it was still broken. A
+character select screen full of corrupted tiles is what surfaced it, which no automated run had reached,
+because my scripted input walked the cursor over a handful of slots and settled.
+
+The cause was a length, not a missing address. A stream carries no length of its own in this format: it
+ends where the cartridge stops reading. Record a length longer than the cartridge ever asks for and the
+decoder keeps running into whatever follows, so the next stream's start falls inside the previous entry
+and never gets a key. Every request for it then misses, and the scan hands back an unrelated bank.
+
+Two entries were wrong that way, and each one cost a stream:
+
+| entry | recorded | the cartridge asks for | hidden stream |
+|-------|----------|------------------------|---------------|
+| `$1A3041` | 5704 | 3168 | `$1A37FC`, 1024 bytes |
+| `$190B01` | 16688 | 5670 | `$19104C`, 8192 bytes |
+
+The first is the character select corruption. The second only appears once the faster sample upload is
+applied, because the changed timing walks the attract sequence down a different path, which is the same
+lesson as above arriving a second time and being no more welcome.
+
+What settled it was building a proper oracle instead of guessing. Running the retail cartridge with the
+chip emulated and logging every DMA gives the complete list of what the hardware actually decompresses:
+3,889 transfers with a fixed A-bus, each one a stream request with an address and a size. Checking that
+list against the map named one address missing and four lengths that disagreed. Correcting the pair
+above took the worst scan from 3,597 slots to 6 and brought the table to 2,816 streams, against 2,815
+in the tagged USA dump.
+
+### A wrong turn worth recording
+
+Before finding the lengths I was convinced the bypass routine was translating transfers it should have
+left alone. The chip only decompresses when `$4801` is armed **and** the channel's A-bus is fixed, and
+the routine only ever checked the first condition, which looked like a clear bug. I added the missing
+test, and it made things worse: clean lookups fell from 83 to 56.
+
+The reason is that the routine clears the fixed-address bit itself, as it must, and the engine programs
+the parameter register once and then reuses it for every block of a multi-block transfer. So a
+continuation legitimately arrives with the bit already clear. Testing it skips exactly the transfers
+that most need translating. The unconditional translate is correct, and the guard came straight back
+out.
 
 ---
 
@@ -998,9 +1042,14 @@ Results:
 | Japan | Shin Akuma | 2.60s | 2.60s | set |
 | Japan | both | **0.80s** | **0.80s** | set |
 
-Every build: **12,000 of 12,000 frames delivered**, zero dropped; **10,929 to 11,360 of 12,000 frames
-lit**, that is 91 to 95 per cent; three fight loads; **zero lookup misses**; **60 of 60 sample blocks
-byte-identical** to their ROM source. All eight chip-free images are exactly 12,582,912 bytes.
+Every build: **12,000 of 12,000 frames delivered**, zero dropped; **36 to 38 of 40 brightness samples
+lit**; three fight loads; **zero lookup misses**; **60 of 60 sample blocks byte-identical** to their
+ROM source. All eight chip-free images are exactly 12,582,912 bytes.
+
+The lookup counts are worth reading alongside the misses, because they say how far each build gets. The
+Japanese chip-free builds perform 3,863 lookups without the sound patch and 1,500 with it, the USA ones
+4,155 and 2,711, and none of them misses. The Japanese build that shipped with the wrong stream lengths
+managed 154 lookups and missed 69 of them, which is what a build looks like when it derails early.
 
 ### On hardware
 
@@ -1128,7 +1177,7 @@ files already knew what they were. It took a tool that had to decide without bei
 **TL;DR.** One change is genuinely needed by anyone who wants to run these images, and I have raised it
 with snes9x. Everything else I built is development-only and stays here.
 
-### Proposed: support for S-DD1 games converted to run without the chip
+### Merged into snes9x: support for S-DD1 games converted to run without the chip
 
 Both S-DD1 cartridges have decompressed conversions in circulation, and snes9x loads neither. I measured
 the Star Ocean conversion against snes9x 1.63 and it renders nothing across 3,000 frames.
@@ -1137,8 +1186,10 @@ There are two causes, and the first one is the conversions' own fault, mine incl
 
 **The header lies.** Both conversions keep the retail header, so they still declare the chip and still
 declare the retail ROM size. snes9x matches `(chipset << 8) | mapmode` against `$4332` and `$4532`,
-enables chip emulation, and sizes the ROM from the header byte, so a 12 MB image is mapped as a 4 MB
-S-DD1 cartridge with two thirds unmapped. [`header.py`](header.py) fixes this for the images built
+enables chip emulation, and then maps that 12 MB image as an S-DD1 cartridge, which is the wrong
+layout. I originally wrote that it also takes the ROM size from the header byte. It does not:
+`CalculatedSize` comes from the file size, and the header size byte only drives the reported size and a
+warning colour. I corrected that on the issue rather than leave it standing. [`header.py`](header.py) fixes this for the images built
 here: chipset `$00`, the real size, at **all six** header copies, since these images mirror the
 original ROM in several places and correcting only the two documented positions leaves the scoring to
 find a dishonest one. With that done snes9x stops choosing `Map_SDD1LoROMMap`.
@@ -1156,18 +1207,19 @@ this kind of mistake survives. The Japanese image at 96 Mbit scores as HiROM, ta
 entirely and lands in `Map_ExtendedHiROMMap`, so the check never runs. Testing one region proved
 nothing about the other, and only building both caught it.
 
-I raised this with snes9x as [issue 1081](https://github.com/snes9xgit/snes9x/issues/1081). The
-implementation lives on the
-[`sdd1-decompressed-map`](https://github.com/gufranco/snes9x/tree/sdd1-decompressed-map) branch of a
-snes9x fork rather than as a patch file here, so it can be built and run the way any other snes9x
-change would be. It is two files: `Map_SDD1DecompressedMap` in `memmap.cpp`, and the detection ahead of
-the mapper dispatch.
+I opened [issue 1081](https://github.com/snes9xgit/snes9x/issues/1081) before writing any of it,
+because how these images should be identified is a maintainer's decision and not mine. Trusting a
+corrected header only helps conversions that fix theirs, which the circulating Star Ocean one does not,
+so a size test is needed as well for images that still declare the chip. OV2 chose that combination,
+size with the honest header as a fast path, and
+[merged the change](https://github.com/snes9xgit/snes9x/pull/1082) on 15 August 2026. It is in snes9x
+master, and the issue is closed.
 
-I am holding the pull request until the detection mechanism is agreed. Trusting a corrected header only
-helps conversions that fix theirs, which the circulating Star Ocean one does not, so the branch also
-keeps the size test for images that still declare the chip. Whether an emulator should recognise these
-by name, by size, or only by an honest header is the maintainers' call, not mine, which is why I asked
-before sending a patch.
+The work was done on the
+[`sdd1-decompressed-map`](https://github.com/gufranco/snes9x/tree/sdd1-decompressed-map) branch of a
+snes9x fork rather than as a patch file in this repository, so it could be built and run the way any
+other snes9x change would be. It touches two files: `Map_SDD1DecompressedMap` in `memmap.cpp`, and the
+detection ahead of the mapper dispatch.
 
 I expect the same gap in [ares](https://github.com/ares-emulator/ares),
 [Mesen2](https://github.com/SourMesen/Mesen2), [bsnes](https://github.com/bsnes-emu/bsnes) and
@@ -1226,12 +1278,12 @@ because the re-layout reclaims the compressed data it reads; the header must com
 checksums the finished image.
 
 For the Japanese build, substitute `asm/sdd1-bypass-jp.asm`, and supply the stream map from
-[`maps/sfz2-jp.json`](maps/sfz2-jp.json) rather than a tagged ROM, since none exists for that region.
+[`jpstreams.py`](jpstreams.py) rather than a tagged ROM, since none exists for that region.
 
 ### Checking a stream map
 
 ```
-python3 mapcheck.py roms/sfz2-jp-final.sfc maps/sfz2-jp.json
+python3 mapcheck.py roms/sfz2-jp-final.sfc
 ```
 
 Reports duplicate sources, streams that fail to decode, and the worst key-scan distance against its
@@ -1279,7 +1331,8 @@ container for each toolchain.
 | [`sdd1tables.py`](sdd1tables.py) | builds and verifies the lookup tables |
 | [`layout.py`](layout.py) | the interleaved address arithmetic |
 | [`rombuild.py`](rombuild.py) | assembles the 96 Mbit image |
-| [`mapcheck.py`](mapcheck.py) | validates a stream map offline |
+| [`mapcheck.py`](mapcheck.py) | validates the stream table offline |
+| [`jpstreams.py`](jpstreams.py) | the Japanese stream table, with its derivation |
 | [`header.py`](header.py) | makes a converted image declare itself honestly |
 | [`wdc65816.py`](wdc65816.py) | 65816 disassembler with M and X width tracking |
 | [`spc700.py`](spc700.py) | SPC700 disassembler |

@@ -1,6 +1,4 @@
 import importlib.util
-import json
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,28 +14,21 @@ def load_module(name):
 
 mapcheck = load_module("mapcheck")
 romtools = load_module("romtools")
+jpstreams = load_module("jpstreams")
 
 JP_ROM = ROOT / "roms" / "sfz2-jp-final.sfc"
-JP_MAP = ROOT / "maps" / "sfz2-jp.json"
 
 
 class LoadTest(unittest.TestCase):
-    def write_map(self, mapping):
-        handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
-        json.dump(mapping, handle)
-        handle.close()
-        return Path(handle.name)
+    def test_a_table_loads_as_sorted_pairs(self):
+        self.assertEqual(mapcheck.load([(512, 64), (256, 32)]), [(256, 32), (512, 64)])
 
-    def test_a_map_loads_as_sorted_pairs(self):
-        path = self.write_map({"512": 64, "256": 32})
-
-        self.assertEqual(mapcheck.load(path), [(256, 32), (512, 64)])
-
-    def test_a_map_with_a_non_positive_length_is_rejected(self):
-        path = self.write_map({"256": 0})
-
+    def test_a_table_with_a_non_positive_length_is_rejected(self):
         with self.assertRaises(ValueError):
-            mapcheck.load(path)
+            mapcheck.load([(256, 0)])
+
+    def test_the_shipped_table_is_the_default(self):
+        self.assertEqual(len(mapcheck.load()), len(jpstreams.STREAMS))
 
 
 class DuplicateTest(unittest.TestCase):
@@ -74,17 +65,15 @@ class ScanCostTest(unittest.TestCase):
         self.assertGreater(worst, 0)
 
 
-@unittest.skipUnless(
-    JP_ROM.exists() and JP_MAP.exists(), "the Japanese ROM or map is absent"
-)
+@unittest.skipUnless(JP_ROM.exists(), "the Japanese ROM is absent")
 class JapaneseMapTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.rom = romtools.load(JP_ROM)
-        cls.entries = mapcheck.load(JP_MAP)
+        cls.entries = mapcheck.load()
 
     def test_the_map_holds_the_streams_the_build_needs(self):
-        self.assertGreaterEqual(len(self.entries), 2814)
+        self.assertGreaterEqual(len(self.entries), 2816)
 
     def test_no_source_appears_twice(self):
         self.assertEqual(mapcheck.duplicate_sources(self.entries), [])

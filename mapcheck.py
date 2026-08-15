@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import statistics
 import sys
 from pathlib import Path
@@ -17,6 +16,7 @@ def _load(name):
 sdd1 = _load("sdd1")
 sdd1tables = _load("sdd1tables")
 romtools = _load("romtools")
+jpstreams = _load("jpstreams")
 
 WINDOW_BASE = 0xC0
 SCAN_BUDGET = 64
@@ -38,9 +38,8 @@ RECOVERED_JP = (
 )
 
 
-def load(path):
-    mapping = json.loads(Path(path).read_text())
-    entries = sorted((int(source), int(length)) for source, length in mapping.items())
+def load(table=None):
+    entries = sorted(jpstreams.STREAMS if table is None else table)
     for source, length in entries:
         if length <= 0:
             raise ValueError(f"stream {source:#08x} has a non-positive length {length}")
@@ -80,9 +79,9 @@ def scan_cost(entries):
     return int(statistics.median(distances)), max(distances)
 
 
-def report(rom_path, map_path):
+def report(rom_path):
     rom = romtools.load(Path(rom_path))
-    entries = load(map_path)
+    entries = load()
 
     repeated = duplicate_sources(entries)
     broken = undecodable(rom, entries)
@@ -99,10 +98,10 @@ def report(rom_path, map_path):
 
 
 def main(argv):
-    if len(argv) != 3:
-        print("usage: mapcheck.py <rom> <map.json>", file=sys.stderr)
+    if len(argv) != 2:
+        print("usage: mapcheck.py <rom>", file=sys.stderr)
         return 2
-    return report(argv[1], argv[2])
+    return report(argv[1])
 
 
 if __name__ == "__main__":
