@@ -1154,7 +1154,7 @@ builds run, not that they run to a stopwatch.
 Three of them, and between them they cover everything except whether the table is complete.
 
 **Every stream against the reference decompressor.** [`tools/verify_streams.py`](tools/verify_streams.py)
-sends all 2,815 USA and 2,840 Japanese streams through snes9x's own `sdd1emu.cpp` in a container and
+sends all 2,815 USA and 2,855 Japanese streams through snes9x's own `sdd1emu.cpp` in a container and
 compares byte for byte with the Python decompressor. Both regions come back identical, in about thirteen
 seconds each.
 
@@ -1169,7 +1169,7 @@ section 16 rewrites on purpose.
 **The build gate.** [`gate.py`](gate.py) refuses to produce an image unless the table has no repeated
 sources, every entry decodes to exactly its recorded length, the worst key scan stays inside its budget,
 and every request in [`requests_jp.py`](requests_jp.py) is covered with a length at least as large. That
-last clause is the one that earns its keep: 1,560 addresses recorded from working hardware, and it
+last clause is the one that earns its keep: 1,661 addresses recorded from working hardware, and it
 rejected a table that had invented eighteen streams and truncated two real ones.
 
 ### Reading the brightness metric
@@ -1191,12 +1191,13 @@ block integrity and lookup miss checks are for.
 quality. Said out loud rather than buried at the bottom.
 
 Completeness of the Japanese table. This is the honest headline. The table is correct for everything
-1,560 recorded hardware requests cover, and there is no way to prove it covers everything, because a
-stream nobody asks for cannot be found. Eight times during one day a screen that had never been driven
-produced another missing stream. The rate is falling and the automated roster tour now closes most of
-the gap, but anyone running this build should expect that a screen nobody has visited may still be
-wrong, and the fix when it happens is mechanical: drive the retail cartridge to that screen, read what
-it asks for, add it.
+1,661 recorded hardware requests cover, and there is no way to prove it covers everything, because a
+stream nobody asks for cannot be found. Eleven times the count moved because a screen that had never
+been driven produced another missing stream, and the search has since converged: three rounds of all
+three builds under five input regimes, and the last round found nothing. That is the strongest
+statement available and it is not proof. Anyone running this build should expect that a screen nobody
+has visited may still be wrong, and the fix when it happens is mechanical: drive the retail cartridge
+to that screen, read what it asks for, add it.
 
 The Japanese build has never left the emulator, and it is also the build whose table is still settling,
 so those two gaps compound. The USA builds have run on real hardware, which is section 17, and that
