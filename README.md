@@ -1150,6 +1150,12 @@ with the existing `map_lorom` and `map_hirom_offset` helpers. That layout is not
 emulator ought to accept: an image built to it runs on a Game Doctor SF7 and on an FXPAK Pro, which is
 section 17.
 
+The detection has to sit above the HiROM and LoROM split, not inside the LoROM chain beside
+`Map_SDD1LoROMMap`. I put it in the obvious place first and the USA image worked, which is exactly how
+this kind of mistake survives. The Japanese image at 96 Mbit scores as HiROM, takes the other branch
+entirely and lands in `Map_ExtendedHiROMMap`, so the check never runs. Testing one region proved
+nothing about the other, and only building both caught it.
+
 I raised this with snes9x as [issue 1081](https://github.com/snes9xgit/snes9x/issues/1081). My
 `Map_SDD1DecompressedMap` implementation is ready in [`upstream/snes9x/`](upstream/snes9x/), and I am
 holding it back until the detection mechanism is agreed. Trusting a corrected header only helps
