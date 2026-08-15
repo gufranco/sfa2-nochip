@@ -1327,8 +1327,40 @@ instrument is gated behind an environment variable and is inert without it.
 | `SFSHOTS` | write a screenshot timeline |
 | `SFFLAG`, `SFSELECT` | read the Shin Akuma flag and the selected character |
 | `SFDRIVE`, `SFFORCE` | closed-loop input driving |
+| `SFGRID`, `SFSETTLE` | sweep the character roster, one slot per interval |
+| `SFTOUR`, `SFTOURBUDGET` | reset between characters and play each one in turn |
+| `SFHASH` | a hash of every frame, for comparing two runs |
+| `SFDUMP`, `SFSHOTEVERY` | write frames as images, periodically or over a range |
+| `SFPORTRAIT` | capture one frame per character, keyed on the cursor |
+
+`SFTOUR` is the one that closed the loop. It resets the console between characters, waits out the boot,
+walks the cursor by reading its value out of work RAM rather than by counting frames, confirms only once
+it has arrived, then lets the match run and moves on. Reading the game's own state instead of trusting
+timing is what makes it reliable where every open-loop schedule before it drifted.
 
 Two of them I had to fix after they distorted my own results, which is at the end of section 12.
+
+### Playing it by hand, with the chip watching
+
+Scripted input is a poor explorer of a fighting game, and the numbers in section 15 say so: a few
+minutes of a person playing found more streams than every driver I wrote. So the instrumentation also
+runs under a frontend a human can use. A small SDL frontend drives the same libretro core, and a second
+build of that core logs every DMA to stderr, which makes an ordinary play session a recording session.
+
+Point it at the 4 MB cartridge form with the chip emulated and everything it draws is correct by
+construction, while everything it asks for is hardware truth. That is where most of `requests_jp.py`
+came from. The Shin Akuma unlock is applied to that build for a specific reason: on a genuine cartridge
+he sits behind a cheat, so no capture of the retail ROM can ever contain his assets.
+
+None of this is in the repository. It is scaffolding, it lives outside the project, and it is described
+here because the measurements cannot be reproduced without knowing it existed.
+
+### The native macOS build of snes9x, and why it is not used here
+
+Worth recording as a dead end. snes9x 1.63's Xcode project still links `AGL` and `GLUT`, both removed
+from current macOS SDKs, and Xcode 26 no longer ships the Metal compiler by default. After clearing
+both, the app builds and runs, emulates with audio, and never creates a window. The frontend used here
+is the SDL one instead, which is a few hundred lines and entirely under control.
 
 ---
 
