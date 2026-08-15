@@ -1,0 +1,75 @@
+import importlib.util
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def load(name):
+    spec = importlib.util.spec_from_file_location(name, ROOT / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+sdd1 = load("sdd1")
+romtools = load("romtools")
+layout = load("layout")
+jpstreams = load("jpstreams")
+
+WINDOW_BASE = 0xC0
+TABLE_BANK = 0x60
+SCAN_BUDGET = 64
+
+
+def window_read(image, banks, bank, address):
+    return image[layout.address_to_file(bank, address, banks)]
+
+
+def resolve(image, banks, source):
+    bank = WINDOW_BASE + (source >> 16)
+    cursor = source & 0xFFFF
+    for step in range(SCAN_BUDGET + 1):
+        slot = (cursor + step) & 0xFFFF
+        if window_read(image, banks, TABLE_BANK, slot) == bank:
+            low = window_read(image, banks, TABLE_BANK + 1, slot)
+            high = window_read(image, banks, TABLE_BANK + 2, slot)
+            target = window_read(image, banks, TABLE_BANK + 3, slot)
+            return (target << 16) | (high << 8) | low, step
+    return None, None
+
+
+def main(argv):
+    image_path = Path(argv[1]) if len(argv) > 1 else ROOT / "build" / "all" / "jp-both-free.sfc"
+    retail = romtools.load(ROOT / "roms" / "sfz2-jp-final.sfc")
+    image = romtools.load(image_path)
+    banks = len(image) // layout.BANK
+
+    wrong = []
+    unresolved = []
+    for source, length in jpstreams.STREAMS:
+        destination, _ = resolve(image, banks, source)
+        if destination is None:
+            unresolved.append(source)
+            continue
+        want = sdd1.decompress(retail, source, length).data
+        got = bytes(
+            window_read(image, banks, (destination + offset) >> 16, (destination + offset) & 0xFFFF)
+            for offset in range(len(want))
+        )
+        if got != want:
+            first = next(i for i, (a, b) in enumerate(zip(got, want, strict=True)) if a != b)
+            wrong.append((source, destination, first))
+
+    print(f"  image {image_path.name}, {len(jpstreams.STREAMS):,} streams")
+    print(f"  unresolved lookups: {len(unresolved)}")
+    for source in unresolved[:10]:
+        print(f"     {source:#08x}")
+    print(f"  streams whose bytes in the image are wrong: {len(wrong)}")
+    for source, destination, first in wrong[:10]:
+        print(f"     {source:#08x} at {destination:#08x}, first bad byte {first}")
+    return 1 if wrong or unresolved else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

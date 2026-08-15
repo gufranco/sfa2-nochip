@@ -1128,12 +1128,12 @@ builds run, not that they run to a stopwatch.
 
 Three of them, and between them they cover everything except whether the table is complete.
 
-**Every stream against the reference decompressor.** [`build/verify_streams.py`](build/verify_streams.py)
+**Every stream against the reference decompressor.** [`tools/verify_streams.py`](tools/verify_streams.py)
 sends all 2,815 USA and 2,840 Japanese streams through snes9x's own `sdd1emu.cpp` in a container and
 compares byte for byte with the Python decompressor. Both regions come back identical, in about thirteen
 seconds each.
 
-**Every stream inside the finished image.** [`build/verify_image.py`](build/verify_image.py) reads the
+**Every stream inside the finished image.** [`tools/verify_image.py`](tools/verify_image.py) reads the
 12 MB image the way the console does: it walks the lookup tables in banks `$60` to `$63`, follows each
 translation, and compares the bytes actually sitting at the destination against what the chip produces.
 Zero unresolved lookups and zero wrong bytes. This is what rules out the re-layout having damaged
@@ -1424,8 +1424,8 @@ the GitHub release, because this repository keeps exactly one markdown file.
 ```
 python3 mapcheck.py roms/sfz2-jp-final.sfc     # shape of the table
 python3 gate.py                                 # the gate both regions must pass
-python3 build/verify_streams.py                 # every stream against the C reference
-python3 build/verify_image.py                   # every stream inside the finished image
+python3 tools/verify_streams.py                 # every stream against the C reference
+python3 tools/verify_image.py                   # every stream inside the finished image
 ```
 
 The first reports duplicate sources, streams that fail to decode, and the worst key-scan distance. The
@@ -1487,6 +1487,11 @@ container for each toolchain.
 | [`requests_jp.py`](requests_jp.py) | decompression requests recorded from working hardware |
 | [`pack.py`](pack.py) | builds the release images, named with the version |
 | [`version.py`](version.py) | the release number, rewritten by `scripts/set-version.sh` |
+
+Development tooling lives in [`tools/`](tools/): the differential and image checks from section 17, a
+full rebuild of every combination, the validation matrix runner, and the drivers that recover streams
+by watching the retail cartridge. None of it is needed to build an image; all of it is needed to
+reproduce the measurements in this document.
 
 Assembly that goes into the ROM lives in [`asm/`](asm/): the bypass patches for both regions, the shared
 translate routine, the sample upload patch, and the Shin Akuma unlock for both regions.

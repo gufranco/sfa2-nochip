@@ -354,6 +354,18 @@ static double frame_brightness(void)
     return total / (double)(frame_width * frame_height * 3);
 }
 
+static unsigned long long frame_hash(void)
+{
+    unsigned long long hash = 1469598103934665603ULL;
+    for (unsigned y = 0; y < frame_height; y++) {
+        for (unsigned x = 0; x < frame_width; x++) {
+            hash ^= (unsigned long long)frame[y * frame_pitch + x];
+            hash *= 1099511628211ULL;
+        }
+    }
+    return hash;
+}
+
 static void write_ppm(const char *path)
 {
     if (frame.empty() || frame_width == 0) {
@@ -446,12 +458,70 @@ int main(int argc, char **argv)
 
     report_probes();
 
+    unsigned portrait_id = 0xFFFF;
+    int portrait_wait = 0;
+    unsigned char portrait_done[256] = {0};
+
+    FILE *hash_out = getenv("SFHASH") ? fopen(getenv("SFHASH"), "w") : NULL;
+    const int dump_first = getenv("SFDUMPFIRST") ? atoi(getenv("SFDUMPFIRST")) : 0;
+    const int dump_count = getenv("SFDUMPCOUNT") ? atoi(getenv("SFDUMPCOUNT")) : 0;
+
     unsigned samples = 0;
     uint32 previous = 0xFFFFFFFF;
     for (int i = 0; i < frames_to_run; i++) {
         start_pressed = (i % 240) >= 200;
         confirm_pressed = (i % 180) >= 150;
-        if (getenv("SFFORCE")) {
+        if (getenv("SFGRID")) {
+            const int settle = getenv("SFSETTLE") ? atoi(getenv("SFSETTLE")) : 90;
+            const int step = i / settle;
+            start_pressed = (i % 300) >= 260;
+            confirm_pressed = (i % 300) >= 240 && (i % 300) < 250;
+            const bool tick = (i % settle) < 4;
+            right_pressed = tick && (step % 6) != 5;
+            down_pressed  = tick && (step % 6) == 5;
+            left_pressed = up_pressed = false;
+            if (getenv("SFSEEN")) {
+                char_seen[Memory.RAM[0x07A2]] = 1;
+            }
+        } else if (getenv("SFTOUR")) {
+            const int budget = getenv("SFTOURBUDGET") ? atoi(getenv("SFTOURBUDGET")) : 7200;
+            const int roster = getenv("SFTOURROSTER") ? atoi(getenv("SFTOURROSTER")) : 18;
+            const int slot = i % budget;
+            const int target = (i / budget) % roster;
+
+            if (slot == 0 && i > 0) {
+                S9xReset();
+                if (use_game_doctor_map) {
+                    install_game_doctor_map(mirror_shift);
+                }
+                printf("TOUR character=%d frame=%d\n", target, i);
+                fflush(stdout);
+            }
+
+            start_pressed = false;
+            confirm_pressed = false;
+            left_pressed = right_pressed = down_pressed = up_pressed = false;
+
+            const bool menu_with_confirm = getenv("SFTOURCONFIRM") != NULL;
+            if (slot < 3000) {
+                if (menu_with_confirm) {
+                    start_pressed = (slot % 240) < 8;
+                    confirm_pressed = (slot % 60) >= 30 && (slot % 60) < 38;
+                } else {
+                    start_pressed = (slot % 60) < 8;
+                }
+            } else if (slot < 4200) {
+                const int cursor = Memory.RAM[0x07A2];
+                if (cursor != target) {
+                    right_pressed = (slot % 24) < 5;
+                }
+            } else if (slot < 4400) {
+                confirm_pressed = (slot % 25) < 10;
+            } else if (slot >= budget - 1500) {
+                confirm_pressed = ((slot - (budget - 1500)) % 50) < 10;
+                start_pressed = ((slot - (budget - 1500)) % 90) < 10;
+            }
+        } else if (getenv("SFFORCE")) {
             Memory.RAM[0x07A2] = 0x02;
             start_pressed = true;
             confirm_pressed = (i % 40) < 12;
@@ -491,6 +561,33 @@ int main(int argc, char **argv)
         const int bright_every = getenv("SFBRIGHT") ? atoi(getenv("SFBRIGHT")) : 0;
         if (bright_every > 0 && (i % bright_every) == bright_every - 1) {
             printf("BRIGHT frame=%d value=%.1f\n", i, frame_brightness());
+        }
+        if (getenv("SFPORTRAIT")) {
+            const unsigned id = Memory.RAM[0x07A2];
+            if (id != portrait_id) {
+                portrait_id = id;
+                portrait_wait = getenv("SFPORTRAITWAIT") ? atoi(getenv("SFPORTRAITWAIT")) : 45;
+            } else if (portrait_wait > 0 && --portrait_wait == 0 && !portrait_done[id]) {
+                char named[512];
+                snprintf(named, sizeof(named), "%s/char-%02X.ppm", getenv("SFPORTRAIT"), id);
+                write_ppm(named);
+                portrait_done[id] = 1;
+                printf("PORTRAIT id=%02X frame=%d\n", id, i);
+            }
+        }
+        if (hash_out) {
+            fprintf(hash_out, "%d %016llx\n", i, frame_hash());
+        }
+        const int shot_every = getenv("SFSHOTEVERY") ? atoi(getenv("SFSHOTEVERY")) : 0;
+        if (shot_every > 0 && getenv("SFDUMP") && (i % shot_every) == 0) {
+            char numbered[512];
+            snprintf(numbered, sizeof(numbered), "%s/%07d.ppm", getenv("SFDUMP"), i);
+            write_ppm(numbered);
+        }
+        if (getenv("SFDUMP") && dump_count > 0 && i >= dump_first && i < dump_first + dump_count) {
+            char numbered[512];
+            snprintf(numbered, sizeof(numbered), "%s/%06d.ppm", getenv("SFDUMP"), i);
+            write_ppm(numbered);
         }
         if (getenv("SFSHOTS") && (i % 1500) == 1499) {
             char path[512];

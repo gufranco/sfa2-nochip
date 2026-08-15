@@ -1,6 +1,7 @@
 # No ROM data, ever. Not the retail dumps, not anything built from them.
 roms/
 build/
+dist/
 validated/
 validated-v2/
 validated-v3/

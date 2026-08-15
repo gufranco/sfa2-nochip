@@ -1,0 +1,13 @@
+{
+  "name": "sfa2-nochip-release-tooling",
+  "version": "0.0.0-managed-by-semantic-release",
+  "private": true,
+  "description": "Release tooling only. This project ships no artefact: the images are built from retail cartridges the user supplies.",
+  "license": "MIT",
+  "devDependencies": {
+    "@semantic-release/exec": "7.1.0",
+    "@semantic-release/git": "10.0.1",
+    "@semantic-release/github": "11.0.6",
+    "semantic-release": "24.2.9"
+  }
+}
