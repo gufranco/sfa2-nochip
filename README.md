@@ -60,7 +60,9 @@ For Street Fighter Zero 2, use `asm/sdd1-bypass-jp.asm` and pass
 Japanese ROM exists.
 
 **Status:** 16 build combinations validated under emulation, both regions, cartridge and 96 Mbit forms.
-Not yet tested on hardware.
+The USA builds also run on real hardware: the 96 Mbit chip-free image on a Game Doctor SF7, and both
+that image and the 4 MB patched cartridge on an FXPAK Pro. The Japanese builds have only ever run under
+emulation.
 
 ---
 
@@ -1000,6 +1002,32 @@ Every build: **12,000 of 12,000 frames delivered**, zero dropped; **10,929 to 11
 lit**, that is 91 to 95 per cent; three fight loads; **zero lookup misses**; **60 of 60 sample blocks
 byte-identical** to their ROM source. All eight chip-free images are exactly 12,582,912 bytes.
 
+### On hardware
+
+The USA builds run on real hardware. This is the check the whole document was waiting on, because every
+number above comes from an emulator and an emulator can only ever confirm that it agrees with itself.
+
+| hardware | image | result |
+|----------|-------|--------|
+| Game Doctor SF7, 128 Mbit DRAM | 96 Mbit chip-free, 12,582,912 bytes | runs |
+| FXPAK Pro | 96 Mbit chip-free, 12,582,912 bytes | runs |
+| FXPAK Pro | 4 MB patched cartridge, S-DD1 still required | runs |
+
+The SF7 result is the one the project set out to get, and it settles the part that was least certain:
+the addressing rule in section 6, recovered by inspection from somebody else's build and never checked
+against the machine it was written for. It is right.
+
+The two FXPAK Pro results answer different questions, so they are listed separately. That cartridge
+emulates the S-DD1 in its FPGA, so the 4 MB patched image running there exercises the sound patch and
+the Shin Akuma change against real silicon with the chip present, and says nothing at all about the
+decompression. The 96 Mbit image running there says the opposite: no chip is involved, so the
+decompressed streams, the reclaimed banks and the bypass routine are all doing their job on hardware
+that is not a Game Doctor.
+
+What I am not claiming from these runs is a number. The 0.78 seconds in the table above is a measured
+emulator figure, and nobody has put a frame counter on a real console. The hardware result is that the
+builds run, not that they run to a stopwatch.
+
 ### Reading the brightness metric
 
 It counts frames whose averaged pixel brightness is above 5 out of 255. It is never 100 per cent, and it
@@ -1015,12 +1043,15 @@ block integrity and lookup miss checks are for.
 
 ## 18. What is not verified
 
-**TL;DR.** Hardware, audio quality, and selecting Shin Akuma in-game. Three real gaps, said out loud
-rather than buried at the bottom.
+**TL;DR.** The Japanese build on hardware, audio quality, and selecting Shin Akuma in-game. Three real
+gaps, said out loud rather than buried at the bottom.
 
-Hardware. Everything above is snes9x 1.63. None of it has run on a real Game Doctor SF7. My mapper is a
-reconstruction, and it is supported by Star Ocean booting and by these images running, but an emulator
-agreeing with itself is not silicon agreeing with me.
+The Japanese build has never left the emulator. The USA builds have now run on real hardware, which is
+section 17, and that removes the largest doubt hanging over the mapper. It does not transfer to Street
+Fighter Zero 2. That build differs in the seven hook addresses, in where the routine lives, and above
+all in its stream map, which is the one part that was rebuilt from scratch by harvesting rather than
+read out of a tagged ROM. Section 15 is the record of that map being confidently wrong once already.
+Until somebody puts it on a cartridge, treat the Japanese image as emulator-only.
 
 Audio quality. I verify sound as traffic and as payload integrity: the right bytes reach audio RAM.
 Nothing listens to it. A build that transfers perfectly and sounds wrong would sail through every check
@@ -1115,7 +1146,9 @@ find a dishonest one. With that done snes9x stops choosing `Map_SDD1LoROMMap`.
 **The layout is unknown to snes9x.** With an honest header it falls through to `Map_JumboLoROMMap`,
 which is a different layout, and still renders nothing. The mapping these conversions need is the one
 described in section 6, including the window rule for banks `$C0` and above, which cannot be expressed
-with the existing `map_lorom` and `map_hirom_offset` helpers.
+with the existing `map_lorom` and `map_hirom_offset` helpers. That layout is not a guess about what an
+emulator ought to accept: an image built to it runs on a Game Doctor SF7 and on an FXPAK Pro, which is
+section 17.
 
 I raised this with snes9x as [issue 1081](https://github.com/snes9xgit/snes9x/issues/1081). My
 `Map_SDD1DecompressedMap` implementation is ready in [`upstream/snes9x/`](upstream/snes9x/), and I am
