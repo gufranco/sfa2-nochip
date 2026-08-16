@@ -9,6 +9,12 @@ ROMS = ROOT / "roms"
 
 Identity = namedtuple("Identity", "size crc32 md5 sha1 sha256")
 
+NO_INTRO = {
+    "sfa2-usa-final.sfc": "Street Fighter Alpha 2 (USA)",
+    "sfz2-jp-final.sfc": "Street Fighter Zero 2 (Japan)",
+    "sfa2-usa-vc-sound-restored.sfc": "not a retail cartridge, the tagged SNES Classic dump",
+}
+
 EXPECTED = {
     "sfa2-usa-final.sfc": Identity(
         size=4194304,
@@ -77,7 +83,7 @@ def main(argv):
             failed = failed or name not in OPTIONAL
             continue
         answer = verdict(expected, digests(path.read_bytes()))
-        print(f"  {name}: {answer}")
+        print(f"  {name}: {answer}  [{NO_INTRO[name]}]")
         failed = failed or answer != "ok"
     return 1 if failed else 0
 

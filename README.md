@@ -1401,10 +1401,11 @@ distributed.
 You supply the retail cartridges, and nothing else. Both stream tables are frozen into the repository,
 so building needs only your own dumps.
 
-The scripts expect these exact filenames in `roms/`, and every digest below is of the whole file with no
-copier header, 4,194,304 bytes each:
+Two retail cartridges, named here as No-Intro names them. Every digest below is of the whole file with
+no copier header, 4,194,304 bytes each, and the scripts read them from `roms/` under the filenames in
+the second column:
 
-| `roms/sfa2-usa-final.sfc` | Street Fighter Alpha 2 (USA), retail |
+| `Street Fighter Alpha 2 (USA)` | read as `roms/sfa2-usa-final.sfc` |
 |---------------------------|--------------------------------------|
 | size | 4,194,304 |
 | CRC32 | `9C59DDFF` |
@@ -1412,7 +1413,7 @@ copier header, 4,194,304 bytes each:
 | SHA-1 | `f4ede150b5281f7f5d7e3188c6d9163c2bc66475` |
 | SHA-256 | `910a29f834199c63c22beddc749baba746da9922196a553255deade59f4fc127` |
 
-| `roms/sfz2-jp-final.sfc` | Street Fighter Zero 2 (Japan), retail |
+| `Street Fighter Zero 2 (Japan)` | read as `roms/sfz2-jp-final.sfc` |
 |--------------------------|---------------------------------------|
 | size | 4,194,304 |
 | CRC32 | `7455A7CF` |
@@ -1420,7 +1421,7 @@ copier header, 4,194,304 bytes each:
 | SHA-1 | `a0db1045fb308d6a2975a4d305b69f877be727a4` |
 | SHA-256 | `f15731675e22dbf3882b777b2d8cd541a637dfdf5d8880c83903cf1e0b64590e` |
 
-| `roms/sfa2-usa-vc-sound-restored.sfc` | the tagged dump, only to regenerate the USA table |
+| the tagged dump | read as `roms/sfa2-usa-vc-sound-restored.sfc` |
 |---------------------------------------|---------------------------------------------------|
 | size | 4,194,304 |
 | CRC32 | `72A9E2C1` |
@@ -1428,9 +1429,12 @@ copier header, 4,194,304 bytes each:
 | SHA-1 | `dfa7cd6f713c44b6a01a6f91de068eb7ace63676` |
 | SHA-256 | `f8aa2ae1f4bc993092fc282a883ecaf669269c17a175a5f43fa95e9da6459dc0` |
 
+The third file has no No-Intro name because it is not a retail cartridge: it is DarkAkuma's SNES
+Classic dump, which carries the stream tags.
+
 SHA-256 is the one that decides. The other three are there so you can cross-check a file against the
 community databases that still key on them, and the size is there because it rejects the wrong file for
-one `stat` call. The third file is needed only by [`sdd1map.py`](sdd1map.py) when regenerating
+one `stat` call. The tagged dump is needed only by [`sdd1map.py`](sdd1map.py) when regenerating
 [`usastreams.py`](usastreams.py), never to build an image, and an image built from the frozen table is
 byte-identical to one built by reading its tags.
 
