@@ -1288,15 +1288,39 @@ With those fixed, every block transfers byte-identical in the background. The bl
 one against the bytes actually sitting in sound RAM and reports `ok=30 bad=0`, including blocks of
 7,227 and 5,571 bytes carried across many frames.
 
-Where it stops: the console still stalls with the screen dark. The engine's own uploader at `$C7:0362`
-waits for an echo while the driver holds a session open, so a session-state mismatch survives somewhere
-between the deferred walk and the engine's other uploads. Two narrower variants were measured and are
-worse, not better: deferring only the second walk gives 13 corrupted blocks, and making the interrupt
-inert leaves the samples that never arrive.
+Where it stops, and what the stall turned out to mean: the console still hangs with the screen dark,
+and the reason is not a bug so much as the shape of the design. The emulator reports both sides of the
+deadlock, the driver's own index and the counter the CPU last posted:
 
-That is where it sits. The transfers themselves are correct and the remaining fault is in session
-ownership rather than in the data path. Shipping it would mean shipping a hang, so the images carry the
-blocking transfer that is proved.
+```
+STUCK cpu=00FFE0 spc=0EC5 ya=2401 x=0E port0=23 port1=BB
+```
+
+The driver's index is `$24` and the counter posted is `$23`. One even, one odd. The index steps by two,
+because it is inside one of the blocks this patch sends two bytes at a time; the counter steps by one,
+because the code posting it is one of the engine's own uploaders sending one byte at a time. They are
+two different transfers talking over each other, and the driver waits forever for a counter that the
+other side is never going to send.
+
+That rules out the explanations I spent the longest on. It is not who is allowed to close the session:
+giving the deferred transfer a session entirely of its own, opened with `$C7:01A5` and closed with
+`$C7:01DD`, changes nothing. It is not the order of the two lists, and it is not the counter arithmetic.
+The exposure is simply that a block of ours stays open across a frame boundary at all. The moment it
+does, any path that reaches an uploader talks into the middle of it, and every entry into the sound
+bank has now been hooked and checked, so there is no door left to close.
+
+The shape that follows from this is to stop yielding inside a block. A block header carries its own
+destination, so one block of 7,227 bytes can be sent as a series of smaller ones at consecutive
+destinations and the bytes land identically. Slice the data into sub-blocks, and every point where the
+interrupt hands control back is then a boundary with nothing open and the driver idle. That is a
+rewrite of the block layer rather than another guard on top of the one that exists, which is why it is
+written down here rather than half-built.
+
+Two narrower variants were measured along the way and are worse, not better: deferring only the second
+walk gives 13 corrupted blocks, and making the interrupt inert starves the game of samples entirely.
+
+The transfers themselves are correct and the remaining fault is structural. Shipping it would mean
+shipping a hang, so the images carry the blocking transfer that is proved.
 
 ---
 

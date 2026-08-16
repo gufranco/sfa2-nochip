@@ -73,7 +73,52 @@ def render(runs):
     return "\n".join(lines) + "\n"
 
 
+PLUMBING = """JOYPAD_WAIT = bytes([0xAD, 0x12, 0x42, 0x4A, 0xB0, 0xFA])
+FRAME_HOOK = bytes.fromhex("")
+FRAME_HOOK_SITES = (0x000208, 0x00020C)
+
+
+def frame_hook_site(rom):
+    for site in FRAME_HOOK_SITES:
+        window = rom[site : site + len(JOYPAD_WAIT)]
+        if window == JOYPAD_WAIT or window[: len(FRAME_HOOK)] == FRAME_HOOK:
+            return site
+    raise ValueError("the frame interrupt's joypad wait is at neither known position")
+
+
+def runs_for(rom):
+    if not FRAME_HOOK:
+        return PATCH
+    return PATCH + ((frame_hook_site(rom), FRAME_HOOK),)
+
+
+"""
+
+
+def add_plumbing(source):
+    if "FRAME_HOOK_SITES" in source:
+        return source
+    source = source.replace("def checksum(rom):", PLUMBING + "def checksum(rom):", 1)
+    source = source.replace(
+        "    return all(rom[at : at + len(data)] == data for at, data in PATCH)",
+        "    return all(rom[at : at + len(data)] == data for at, data in runs_for(rom))",
+        1,
+    )
+    source = source.replace("    for at, data in PATCH:", "    for at, data in runs_for(rom):", 1)
+    source = source.replace(
+        "    return sum(len(data) for _, data in PATCH)",
+        "    return sum(len(data) for _, data in PATCH) + len(FRAME_HOOK)",
+        1,
+    )
+    return source.replace(
+        '    print(f"  patch         {patch_bytes()} bytes in {len(PATCH)} runs")',
+        '    print(f"  patch         {patch_bytes()} bytes in {len(runs_for(rom))} runs")',
+        1,
+    )
+
+
 def rewrite(source, shared, hook_body, hook_sites):
+    source = add_plumbing(source)
     rendered = render(shared)
     start = source.index("PATCH = (")
     end = source.index("\n)\n", start) + 3
