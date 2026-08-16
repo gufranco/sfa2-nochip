@@ -1255,7 +1255,7 @@ It does work, and I have it crossing frame boundaries. Tracing the state every f
 frame 345 was sliced over the next two and closed itself on frame 347, with the list cursor and the APU
 destination advancing exactly as they should.
 
-Four defects surfaced on the way, and each is worth keeping:
+Eight defects surfaced on the way, and each is worth keeping:
 
 - Work RAM does not come up zeroed on a console. The state block needed a mark written by the code that
   fills it in, checked before anything reads it. Emulators mostly do clear it, which is precisely why
@@ -1268,16 +1268,35 @@ Four defects surfaced on the way, and each is worth keeping:
 - The upload is a session. `$C7:01DD` posts a header whose kind byte is zero, and that releases the
   chip to go back to playing. A block that arrives after it has nobody listening, and the console hangs
   waiting for an echo that is never coming.
+- The suspend routine drained the previously suspended list and then recorded the cursor, but draining
+  walks a different list through the same registers and the same direct page. It was recording a sample
+  source address as a list pointer, and the walk then read ids that resolved into bank `$06`, which
+  holds compressed graphics and no samples at all.
+- The engine's entry hook runs at `$C7:005B`, and the engine does not set its direct page to zero until
+  `$C7:0065`. Every `$84` and `$8A` through `$8E` access in the drain was landing on whichever page the
+  caller happened to have, so the terminator posted a counter the driver never recognised.
+- Setup has its own return path at `$C7:0053`, not the engine's. Clearing the interlock at the end of
+  the entry hook instead of there left a window in which the interrupt opened a block while setup was
+  still talking to the driver, and setup then waited forever for a `$BBAA` that a busy driver cannot
+  send.
+- The handler clears the interrupt by reading `$4210` at `$C0:01BA`, long before this hook runs, so the
+  next vblank re-enters it while a slice is still waiting on the driver. Two slices interleaved their
+  handshakes. This is the one that produced the impossible-looking reading: a block reporting every
+  pair posted with only 844 of its 5,571 bytes arrived.
 
-Where it stopped: with the session held open across frames, the deferred walk desynchronises. One block
-was posted with a source in bank `$06`, which holds compressed graphics and no samples at all, so the
-walk had read past the end of its list. An earlier block took 1,787 port writes against the 588 its
-length calls for. The console then hangs at `$C7:0344` with the screen black, which the block verifier
-catches and reports as `BLKBAD`.
+With those fixed, every block transfers byte-identical in the background. The block verifier walks each
+one against the bytes actually sitting in sound RAM and reports `ok=30 bad=0`, including blocks of
+7,227 and 5,571 bytes carried across many frames.
 
-That is where it sits. The mechanism is sound and the remaining fault is in how the suspended walk
-tracks its list across the engine's other work. Shipping it would mean shipping a hang, so the images
-carry the blocking transfer that is proved.
+Where it stops: the console still stalls with the screen dark. The engine's own uploader at `$C7:0362`
+waits for an echo while the driver holds a session open, so a session-state mismatch survives somewhere
+between the deferred walk and the engine's other uploads. Two narrower variants were measured and are
+worse, not better: deferring only the second walk gives 13 corrupted blocks, and making the interrupt
+inert leaves the samples that never arrive.
+
+That is where it sits. The transfers themselves are correct and the remaining fault is in session
+ownership rather than in the data path. Shipping it would mean shipping a hang, so the images carry the
+blocking transfer that is proved.
 
 ---
 

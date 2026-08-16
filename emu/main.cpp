@@ -29,6 +29,7 @@ static void note_spc_pc(void)
     }
 }
 
+static unsigned frames_seen = 0;
 static unsigned long apu_writes_this_frame = 0;
 static unsigned long apu_writer_pc[64];
 static unsigned long apu_writer_hits[64];
@@ -147,6 +148,11 @@ extern "C" void sf_note_write(uint32 address)
                S9xGetByte(s+5), S9xGetByte(s+6), S9xGetByte(s+7), S9xGetByte(s+8),
                SNES::smp.regs.pc >= 0xFFC0 ? "ipl" : "driver");
     }
+    if (getenv("SFSESSION")) {
+        if (pc >= 0xC701A5UL && pc <= 0xC701C0UL) { printf("OPEN frames=%u pc=%06lX\n", frames_seen, pc); }
+        if (pc >= 0xC701DDUL && pc <= 0xC701F8UL) { printf("TERM frames=%u pc=%06lX\n", frames_seen, pc); }
+        if (pc >= 0xC704EBUL && pc <= 0xC70540UL) { printf("ARM frames=%u pc=%06lX\n", frames_seen, pc); }
+    }
     if ((pc == 0xC70221UL || pc == 0xC70478UL) && getenv("SFAPU")) {
         printf("BLOCK src=%02X:%04X len=%u\n",
                (unsigned)Registers.DB, (unsigned)Registers.Y.W, (unsigned)Registers.X.W);
@@ -171,7 +177,6 @@ static std::vector<uint16_t> frame;
 static unsigned frame_width = 0;
 static unsigned frame_height = 0;
 static unsigned frame_pitch = 0;
-static unsigned frames_seen = 0;
 
 static void cb_video(const void *data, unsigned width, unsigned height, size_t pitch)
 {
@@ -589,7 +594,7 @@ int main(int argc, char **argv)
             const unsigned background_state_in_wram = 0x10A00;
             const uint8 *state = &Memory.RAM[background_state_in_wram];
             printf("STATE frame=%d pairs=%u busy=%u walk=%u flight=%u"
-                   " cursor=%04X dest=%04X ticket=%02X fe=%02X ready=%04X ticks=%u opens=%u parks=%u\n",
+                   " cursor=%04X dest=%04X ticket=%02X fe=%02X ready=%04X ticks=%u opens=%u parks=%u slices=%u closes=%u\n",
                    i,
                    (unsigned)(state[0] | (state[1] << 8)),
                    (unsigned)state[0x0A], (unsigned)state[0x0B], (unsigned)state[0x0C],
@@ -600,7 +605,9 @@ int main(int argc, char **argv)
                    (unsigned)(state[0x18] | (state[0x19] << 8)),
                    (unsigned)(state[0x1A] | (state[0x1B] << 8)),
                    (unsigned)(state[0x1C] | (state[0x1D] << 8)),
-                   (unsigned)(state[0x1E] | (state[0x1F] << 8)));
+                   (unsigned)(state[0x1E] | (state[0x1F] << 8)),
+                   (unsigned)(state[0x20] | (state[0x21] << 8)),
+                   (unsigned)(state[0x22] | (state[0x23] << 8)));
         }
         if (getenv("SFWRAM")) {
             const int watched = getenv("SFWRAMSIZE") ? atoi(getenv("SFWRAMSIZE")) : 0x2000;
