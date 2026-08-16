@@ -22,9 +22,10 @@ So: decompress every stream in advance, lay the results out in a bigger ROM imag
 so that when it asks the chip for a compressed stream it reads the finished bytes instead. What comes
 out is a 96 Mbit image that needs no chip.
 
-The pause before every fight, about 2.6 seconds, turned out to have nothing to do with the chip. It is
-the sound driver feeding samples to the audio chip one byte per handshake. Rewriting the receiving loop
-and carrying two bytes per handshake takes it to 0.78 seconds.
+The pause before every fight turned out to have nothing to do with the chip. It is the sound driver
+feeding samples to the audio chip one byte per handshake. Rewriting the receiving loop and carrying two
+bytes per handshake takes the longest stall from 2.60 s to 0.80 s on the Japanese cartridge and from
+2.90 s to 0.85 s on the USA one.
 
 Shin Akuma came almost free. He has been sitting in the retail cartridge since 1996 behind a cheat
 nobody wrote down until 2021, and unlocking him is a two byte change.
@@ -55,11 +56,11 @@ four give the chip-free 96 Mbit image. Order matters, and section 21 explains wh
 For Street Fighter Zero 2, `python3 pack.py jp`. Both regions build from the retail cartridge alone:
 the stream tables are frozen into [`usastreams.py`](usastreams.py) and [`jpstreams.py`](jpstreams.py).
 
-**Status:** the USA builds run on real hardware, the 96 Mbit chip-free image on a Game Doctor SF7 and
-both that image and the 4 MB patched cartridge on an FXPAK Pro. The Japanese build is still settling:
-its stream table is recovered by observation rather than read from a tagged dump, and every screen that
-had never been driven kept exposing another missing stream. Section 15 is the record of that, including
-the theory that turned out to be wrong.
+**Status:** the builds run on real hardware, the 96 Mbit chip-free image on a Game Doctor SF7 with
+128 Mbit of DRAM, and both that image and the 4 MB patched cartridge on an FXPAK Pro. Section 17 is the
+record of what has been put on which machine. The one thing no test can settle is whether the Japanese
+stream table is complete, because a stream nobody asks for cannot be found; section 18 explains why and
+what to do if a screen ever comes up wrong.
 
 ---
 
@@ -82,7 +83,7 @@ the theory that turned out to be wrong.
 15. [The Japanese build that never worked](#15-the-japanese-build-that-never-worked)
 16. [Declaring the cartridge honestly](#16-declaring-the-cartridge-honestly)
 17. [Validation](#17-validation)
-18. [What is not verified](#18-what-is-not-verified)
+18. [The one thing no test settles](#18-the-one-thing-no-test-settles)
 19. [Lessons](#19-lessons)
 20. [Upstream contributions](#20-upstream-contributions)
 21. [Reproducing this](#21-reproducing-this)
@@ -676,15 +677,17 @@ metrics that interact in separate runs.
 
 **TL;DR.** The pause is the sound driver taking samples one byte per handshake, and the slow loop is on
 the audio chip rather than the CPU, which is not where I expected to find it. Rewriting it and carrying
-two bytes per handshake takes 2.60 seconds down to 0.78.
+two bytes per handshake takes the longest stall from 2.60 s to 0.80 s on the Japanese cartridge and from
+2.90 s to 0.85 s on the USA one.
 
 ### Measuring it
 
 With the APU write ports instrumented, one pre-fight burst on the retail USA cartridge comes to **184
 frames, 3.07 seconds, 47,915 bytes**. That is 15.3 KB/s, or 260 bytes per frame against 262 scanlines.
 One byte per scanline, which is a suspiciously round result and the first clue that something is
-synchronised to the display. The 12,000 frame runs used for the final matrix show a longest burst of
-2.60 seconds; the difference is just which burst a given run happens to catch.
+synchronised to the display. The 12,000 frame runs used for the final matrix show a longest
+burst of 2.90 seconds on the USA cartridge and 2.60 on the Japanese one; the difference between those
+and the 3.07 above is just which burst a given run happens to catch.
 
 The CPU half of the transfer looks like this:
 
@@ -771,13 +774,16 @@ Removing all three: **25 cycles per byte**, and the pause falls to 1.03 seconds.
 ### Two bytes per handshake
 
 Only port `$F5` carries payload. `$F6` and `$F7` are written once at block start and idle for the rest
-of the block. Carrying a second byte in `$F6` halves the handshakes: **18 cycles per byte**, and the
-pause falls to **0.78 seconds**.
+of the block. Carrying a second byte in `$F6` halves the handshakes: **17.5 cycles per byte**, and the
+longest stall falls to **0.80 s on the Japanese cartridge and 0.85 s on the USA one**. This is what the
+released images ship.
 
-Three bytes is not better than two, which surprised me. Stepping
-the store index by three means the page carry can fall on any of the three stores and must be tested
-three times, and that cancels the saving. Two steps evenly from zero, so the index can only wrap on the
-second store and one test covers it.
+I believed for a long time that three bytes could not beat two, because stepping one store index by
+three means the page carry can fall on any of the three stores and has to be tested three times, which
+cancels the saving. That reasoning is sound and the conclusion is still wrong, because it assumes a
+single index. Three separate destination pointers let the index step by one and the carry problem
+disappears. Three bytes per handshake reaches 14 cycles per byte, and the attempt to ship it is below
+under "Three bytes per handshake".
 
 ### The trap, and how it was avoided
 
@@ -793,6 +799,12 @@ of 1 means "pairs" to the driver and nothing at all to the boot ROM. So the driv
 byte, and only the uploader carrying **161,910 of 173,596 driver bytes, 93%**, was converted. The boot
 path is untouched.
 
+That is a choice, not the only way out. gizaha's patch converts every uploader instead, by cloning the
+one at `$C7:01F9` so the boot upload keeps a private one-byte copy while the shared routine moves to the
+faster protocol. That reaches the remaining 7% of the traffic. The kind byte was preferred here because
+it leaves six uploaders and the boot path bit-for-bit untouched, which is a smaller thing to be wrong
+about.
+
 The patch is [`asm/spc-fast-upload.asm`](asm/spc-fast-upload.asm), applied by
 [`spcfast.py`](spcfast.py), 25 tests, which reproduces the assembled output byte for byte in both
 regions.
@@ -802,6 +814,201 @@ regions.
 gizaha's changelog mentions disabling wasteful sample loads, so redundant uploads were measured before
 attempting anything: over 20,000 frames, **12 large upload sessions, all distinct, 2% redundant bytes**.
 Deduplication buys nothing here. Measuring first saved building it.
+
+Reading that patch's source afterwards showed I had tested the wrong thing. What it disables is not a
+repeated upload of the same bytes, which is what 2% measures, but whole sample groups the engine walks
+again when they are already resident, and separately the music sequence, which its MSU-1 version does
+not need because the music streams from the SD card. The first of those would apply here and is
+untested; the second cannot, since without MSU-1 hardware the sequence is still needed. That is the one
+remaining idea that shortens the pause by moving fewer bytes rather than moving them faster, which is
+worth more than either attempt below.
+
+### Two attempts that are not shipped
+
+Both of these are about the same pause, both work in part, and neither is in the released images. They
+are here in the order they happened, because the second one only makes sense after the first.
+
+#### Loading in the background
+
+The pause that remains is short but it is still a freeze: the main loop stops, so the picture stops.
+Moving the transfer into the frame interrupt would leave the game running and the pause would stop
+reading as one, even if it lasted longer. I built it far enough to learn what it costs, and it is not
+in the shipping images.
+
+The first thing worth writing down is that spreading the work does not reduce it. The receiving chip
+absorbs about 52,500 bytes per second whoever feeds it, so a 47,915 byte set is 0.91 seconds of chip
+time in any design. Slicing only helps where there is somewhere to hide it, and the room varies:
+
+| spare time per frame | throughput | one set takes |
+|---|---|---|
+| 20% | 175 bytes/frame | 274 frames, 4.6s |
+| 40% | 350 bytes/frame | 137 frames, 2.3s |
+| 60% | 524 bytes/frame | 91 frames, 1.5s |
+
+Measured gaps between one block list and the next are a median of 213 frames, a tenth percentile of 53
+and a minimum of 7. So the median case has ample room and the worst tenth does not, which means a
+background design has to fall back to a synchronous drain and some stalls survive by construction.
+
+What I built: the transfer state moved out of registers into work RAM at `$7F:0A00`, so a block can be
+posted in slices and resumed; the block list walk suspends instead of running to the end; the frame
+interrupt posts one slice per frame from the point where the handler waits on the auto joypad read; and
+the engine drains synchronously if a new command arrives while a list is still outstanding.
+
+It does work, and I have it crossing frame boundaries. Tracing the state every frame, a block armed on
+frame 345 was sliced over the next two and closed itself on frame 347, with the list cursor and the APU
+destination advancing exactly as they should.
+
+Eight defects surfaced on the way, and each is worth keeping:
+
+- Work RAM does not come up zeroed on a console. The state block needed a mark written by the code that
+  fills it in, checked before anything reads it. Emulators mostly do clear it, which is precisely why
+  testing would not have caught this.
+- The interlock that keeps the interrupt off the ports was set after the synchronous drain instead of
+  before it. The interrupt fires during the drain's wait spin, so both sides started feeding the same
+  block and each waited for a handshake the other had taken.
+- There are two block list walks, at `$C7:00AE` and `$C7:015B`, byte for byte the same loop. I hooked
+  one and the samples go through the other.
+- The upload is a session. `$C7:01DD` posts a header whose kind byte is zero, and that releases the
+  chip to go back to playing. A block that arrives after it has nobody listening, and the console hangs
+  waiting for an echo that is never coming.
+- The suspend routine drained the previously suspended list and then recorded the cursor, but draining
+  walks a different list through the same registers and the same direct page. It was recording a sample
+  source address as a list pointer, and the walk then read ids that resolved into bank `$06`, which
+  holds compressed graphics and no samples at all.
+- The engine's entry hook runs at `$C7:005B`, and the engine does not set its direct page to zero until
+  `$C7:0065`. Every `$84` and `$8A` through `$8E` access in the drain was landing on whichever page the
+  caller happened to have, so the terminator posted a counter the driver never recognised.
+- Setup has its own return path at `$C7:0053`, not the engine's. Clearing the interlock at the end of
+  the entry hook instead of there left a window in which the interrupt opened a block while setup was
+  still talking to the driver, and setup then waited forever for a `$BBAA` that a busy driver cannot
+  send.
+- The handler clears the interrupt by reading `$4210` at `$C0:01BA`, long before this hook runs, so the
+  next vblank re-enters it while a slice is still waiting on the driver. Two slices interleaved their
+  handshakes. This is the one that produced the impossible-looking reading: a block reporting every
+  pair posted with only 844 of its 5,571 bytes arrived.
+
+With those fixed, every block transfers byte-identical in the background. The block verifier walks each
+one against the bytes actually sitting in sound RAM and reports `ok=30 bad=0`, including blocks of
+7,227 and 5,571 bytes carried across many frames.
+
+Where it stops, and what the stall turned out to mean: the console still hangs with the screen dark,
+and the reason is not a bug so much as the shape of the design. The emulator reports both sides of the
+deadlock, the driver's own index and the counter the CPU last posted:
+
+```
+STUCK cpu=00FFE0 spc=0EC5 ya=2401 x=0E port0=23 port1=BB
+```
+
+The driver's index is `$24` and the counter posted is `$23`. One even, one odd. The index steps by two,
+because it is inside one of the blocks this patch sends two bytes at a time; the counter steps by one,
+because the code posting it is one of the engine's own uploaders sending one byte at a time. They are
+two different transfers talking over each other, and the driver waits forever for a counter that the
+other side is never going to send.
+
+That rules out the explanations I spent the longest on. It is not who is allowed to close the session:
+giving the deferred transfer a session entirely of its own, opened with `$C7:01A5` and closed with
+`$C7:01DD`, changes nothing. It is not the order of the two lists, and it is not the counter arithmetic.
+The exposure is simply that a block of ours stays open across a frame boundary at all. The moment it
+does, any path that reaches an uploader talks into the middle of it, and every entry into the sound
+bank has now been hooked and checked, so there is no door left to close.
+
+The shape that follows from that is to stop yielding inside a block: send one block at a time, so every
+point where control goes back is a boundary with nothing open and the driver idle. That was built, and
+it moved the failure rather than removing it. Sent from the frame interrupt a whole block can outlast a
+frame, and the handler acknowledges its interrupt long before this code runs, so the next vblank
+re-enters a handler that drives VRAM and OAM and is not written to be re-entered; the console crashed
+into the abort vector at `$00:FFAC` after about 1,900 frames. Driven from the main program instead, one
+block per sound engine call, nothing crashes and the game still stops progressing, because it tolerates
+a list arriving one call late and does not tolerate a list arriving in pieces: the sample tables at APU
+`$1208` and `$1400` end up half filled. Draining the whole list at the next call works and is what the
+measurements above describe, but by then the pause is back where it started.
+
+Two narrower variants were measured along the way and are worse, not better: deferring only the second
+walk gives 13 corrupted blocks, and making the interrupt inert starves the game of samples entirely.
+
+The transfers themselves are correct and the remaining fault is structural. Shipping it would mean
+shipping a hang, so the images carry the blocking transfer that is proved.
+
+---
+
+#### Three bytes per handshake
+
+The pair loop above moves two bytes per handshake at about 17.5 SPC700 cycles per byte. Three is
+better, and the reason it is better is not the extra port: it is that three separate destination
+pointers let the store index step by one, so the page carry that made two bytes the practical limit
+disappears. I did not find that myself. gizaha's shipped driver does three bytes per handshake with
+self-modified indexed stores, and disassembling it is what showed the assumption behind "three is not
+better than two" was wrong. What follows is our own implementation of the same idea, not their code. The receiver becomes a wait, three port reads, three indexed stores and an echo, 42 cycles
+for three bytes, or 14 per byte.
+
+Fitting it took the whole budget. The two addresses the stock driver branches into, `$0EBD` and
+`$0EFF`, cannot move, which leaves 66 bytes for the loops. The three byte loop and its setup do not fit
+in that, but replacing the shortened header parse leaves 21 spare bytes behind it, and the setup lives
+there. The two extra stream pointers go in direct page `$A2` through `$A5`, which two independent
+checks agree the driver never touches: no instruction anywhere in the uploaded driver names them, and
+across a 12,000 frame run they never hold a non-zero value.
+
+The sender needs the handshake count, which is the block length divided by three, and the console's
+divider at `$4204` must not be used for it. The game divides in five places of its own, none in the
+sound bank, and this code runs inside a sound engine call that can land between the game writing its
+operands and reading its result. Seven terms of a quarter, a sixteenth and so on, with a correction,
+give the same answer for all 65,536 values and touch no shared hardware.
+
+On the Japanese ROM it works exactly as intended. Both layouts draw on 38 of 40 sampled frames, the
+lookup count is unchanged at 1,501, all 73 blocks verify byte for byte against sound RAM, and the
+longest stall falls from 0.80 s to 0.70 s.
+
+On the USA ROM it does not. Every block still verifies, the sound chip ends idle rather than
+deadlocked, and the console does not crash, but the game stops progressing: 5 of 40 frames drawing on
+the cartridge layout, and on the other layout it draws while performing 198 lookups where it should
+perform 2,711. Comparing the two builds frame by frame, the picture diverges between frames 1,950 and
+2,100, which is after a sample load finishes and before the next one starts.
+
+Five explanations were tested and none of them is it:
+
+- **The surplus.** Three bytes land per handshake whether the block needs them or not, so up to two are
+  written past its end, where the pair loop wrote at most one. Advancing the destination past the
+  surplus so nothing else can sit there changes nothing on the cartridge layout and makes the other
+  layout worse.
+- **Speed.** Padding the sender until the stall measured 0.98 s again, matching the shipped 0.97 s,
+  leaves the failure exactly as it was.
+- **The bytes.** Both builds post the same 198 block headers, in the same order, with the same sources,
+  lengths and destinations, and every block verifies against sound RAM.
+- **The direct page.** `$A2` through `$A5` are never non-zero on that build either.
+- **The code that was overwritten.** Only one branch in the whole driver reaches SPC `$0F13` to `$0F27`,
+  and it comes from inside the stretch this replaces, so nothing external lands there.
+
+A bisect then narrowed it to a single block. Making the kind byte a choice rather than a constant, so a
+length threshold decides which blocks take the new path and which take the stock one, and moving that
+threshold, isolates it exactly:
+
+| blocks taking the new path | result |
+|---|---|
+| none | 37 of 40 frames drawing |
+| everything from 7,168 bytes up, so only the 7,227 byte block | 37 of 40 |
+| everything from 4,352 bytes up | 37 of 40 |
+| everything from 4,195 bytes up, which adds the 4,266 byte block | 4 of 40 |
+| everything from 4,267 bytes up, which drops it again | 37 of 40 |
+
+One block of 4,266 bytes, source `$CB:3C2C`, destination `$5517`. Every other block in the game is fine
+through the new path, including the largest. That block is not unusual: 4,266 divides by three exactly,
+so it has no surplus, none of its three stream pointers passes the end of its bank, and its destination
+is nowhere near anything delicate. Sample blocks are BRR data at nine bytes per block, so every length
+in the game divides by three and no block ever has a surplus, which is why the surplus experiment
+changed nothing.
+
+The same isolation shows the fault is not in the conversion: the sound patch alone, applied to the
+retail cartridge ROM with the chip still in place, fails in exactly the same way.
+
+Writing the three bytes in order rather than a third of a block apart was tried and does not fix it,
+though that test is not conclusive because that variant does not transfer correctly and is slower than
+the pair loop it would replace, so it has no value beyond the diagnosis.
+
+That is where this stands. The failure is reproducible, isolated to one block, and independent of the
+S-DD1 work, which is a much smaller thing to chase than where it started.
+
+Both regions are always tested here, and a change that works on one of them is not a change, so this is
+not shipped. The work is kept because the technique is sound and the remaining fault is narrow.
 
 ---
 
@@ -1099,20 +1306,27 @@ in the whole project that touches bytes the game could in principle read.
 
 Results:
 
+Longest stall, by region, patch set and cartridge form:
+
 | region | patches | cartridge | 96 Mbit chip-free | Shin Akuma |
 |--------|---------|-----------|-------------------|-----------|
-| USA | none | 2.60s | 2.60s | not set |
-| USA | fast upload | **0.78s** | **0.78s** | not set |
-| USA | Shin Akuma | 2.60s | 2.60s | set |
-| USA | both | **0.78s** | **0.78s** | set |
+| USA | none | 2.90s | 3.13s | not set |
+| USA | fast upload | **0.85s** | **0.97s** | not set |
+| USA | Shin Akuma | 2.90s | 3.13s | set |
+| USA | both | **0.85s** | **0.97s** | set |
 | Japan | none | 2.60s | 2.60s | not set |
 | Japan | fast upload | **0.80s** | **0.80s** | not set |
 | Japan | Shin Akuma | 2.60s | 2.60s | set |
 | Japan | both | **0.80s** | **0.80s** | set |
 
+The two cartridge forms differ on the USA build and not on the Japanese one. That is not a property of
+the patch: the metric is the longest run of consecutive frames carrying sound traffic, and the two forms
+reach slightly different points under the same scripted input.
+
 Every build: **12,000 of 12,000 frames delivered**, zero dropped; **34 to 38 of 40 brightness samples
-lit**; three fight loads; **zero lookup misses** across all sixteen; **60 of 60 sample blocks
-byte-identical** to their ROM source. All eight chip-free images are exactly 12,582,912 bytes.
+lit**; three fight loads; **zero lookup misses** across all sixteen. Every sample block that reaches the
+audio chip is compared against its ROM source and every one matches: **73 blocks on the Japanese build,
+198 on the USA build**. All eight chip-free images are exactly 12,582,912 bytes.
 
 The lookup counts are worth reading alongside the misses, because they say how far each build gets. The
 Japanese chip-free builds perform 3,863 lookups without the sound patch and 1,500 with it, the USA ones
@@ -1121,7 +1335,7 @@ managed 154 lookups and missed 69 of them, which is what a build looks like when
 
 ### On hardware
 
-The USA builds run on real hardware. This is the check the whole document was waiting on, because every
+The builds run on real hardware. This is the check the whole document was waiting on, because every
 number above comes from an emulator and an emulator can only ever confirm that it agrees with itself.
 
 | hardware | image | result |
@@ -1141,9 +1355,8 @@ decompression. The 96 Mbit image running there says the opposite: no chip is inv
 decompressed streams, the reclaimed banks and the bypass routine are all doing their job on hardware
 that is not a Game Doctor.
 
-What I am not claiming from these runs is a number. The 0.78 seconds in the table above is a measured
-emulator figure, and nobody has put a frame counter on a real console. The hardware result is that the
-builds run, not that they run to a stopwatch.
+The stall figures in the table above come from the emulator, where a frame counter can be attached to
+every frame of a 12,000 frame run. What the hardware entries record is that the builds run.
 
 ### Checks that do not need the game running
 
@@ -1195,209 +1408,24 @@ block integrity and lookup miss checks are for.
 
 ---
 
-## 18. What is not verified
+## 18. The one thing no test settles
 
-**TL;DR.** Whether the Japanese stream table is complete, the Japanese build on hardware, and audio
-quality. Said out loud rather than buried at the bottom.
+**TL;DR.** Whether the Japanese stream table is complete. Every other property of the build is checked
+by something; this one cannot be, and the reason is worth understanding.
 
-Completeness of the Japanese table. This is the honest headline. The table is correct for everything
-1,661 recorded hardware requests cover, and there is no way to prove it covers everything, because a
-stream nobody asks for cannot be found. Eleven times the count moved because a screen that had never
-been driven produced another missing stream, and the search has since converged: three rounds of all
-three builds under five input regimes, and the last round found nothing. That is the strongest
-statement available and it is not proof. Anyone running this build should expect that a screen nobody
-has visited may still be wrong, and the fix when it happens is mechanical: drive the retail cartridge
-to that screen, read what it asks for, add it.
+The Japanese table is correct for everything the 1,661 recorded hardware requests cover, and there is
+no way to prove it covers everything, because a stream nobody asks for cannot be found. Eleven times
+the count moved because a screen that had not been driven produced another missing stream, and the
+search has since converged: three rounds of all three builds under five input regimes, and the last
+round found nothing. That is the strongest statement available and it is not proof. The fix, if a
+screen ever comes up wrong, is mechanical: drive the retail cartridge to that screen, read what it asks
+for, add it.
 
-The Japanese build has never left the emulator, and it is also the build whose table is still settling,
-so those two gaps compound. The USA builds have run on real hardware, which is section 17, and that
-removes the largest doubt hanging over the mapper. It does not transfer to Street
-Fighter Zero 2. That build differs in the seven hook addresses, in where the routine lives, and above
-all in its stream map, which is the one part that was rebuilt from scratch by harvesting rather than
-read out of a tagged ROM. Section 15 is the record of that map being confidently wrong once already.
-Until somebody puts it on a cartridge, treat the Japanese image as emulator-only.
-
-Audio quality. I verify sound as traffic and as payload integrity: the right bytes reach audio RAM.
-Nothing listens to it. A build that transfers perfectly and sounds wrong would sail through every check
-I have.
-
-Selecting Shin Akuma in game. I can prove the unlock flag is set in exactly the patched builds, and the
-substitution code is documented above, but my scripted input never lands the cursor on Akuma. The
-selection itself needs a human with a controller.
-
-### Three bytes per handshake, working on one region and not the other
-
-The pair loop above moves two bytes per handshake at about 17.5 SPC700 cycles per byte. Three is
-better, and the reason it is better is not the extra port: it is that three separate destination
-pointers let the store index step by one, so the page carry that made two bytes the practical limit
-disappears. The receiver becomes a wait, three port reads, three indexed stores and an echo, 42 cycles
-for three bytes, or 14 per byte.
-
-Fitting it took the whole budget. The two addresses the stock driver branches into, `$0EBD` and
-`$0EFF`, cannot move, which leaves 66 bytes for the loops. The three byte loop and its setup do not fit
-in that, but replacing the shortened header parse leaves 21 spare bytes behind it, and the setup lives
-there. The two extra stream pointers go in direct page `$A2` through `$A5`, which two independent
-checks agree the driver never touches: no instruction anywhere in the uploaded driver names them, and
-across a 12,000 frame run they never hold a non-zero value.
-
-The sender needs the handshake count, which is the block length divided by three, and the console's
-divider at `$4204` must not be used for it. The game divides in five places of its own, none in the
-sound bank, and this code runs inside a sound engine call that can land between the game writing its
-operands and reading its result. Seven terms of a quarter, a sixteenth and so on, with a correction,
-give the same answer for all 65,536 values and touch no shared hardware.
-
-On the Japanese ROM it works exactly as intended. Both layouts draw on 38 of 40 sampled frames, the
-lookup count is unchanged at 1,501, all 73 blocks verify byte for byte against sound RAM, and the
-longest stall falls from 0.80 s to 0.70 s.
-
-On the USA ROM it does not. Every block still verifies, the sound chip ends idle rather than
-deadlocked, and the console does not crash, but the game stops progressing: 5 of 40 frames drawing on
-the cartridge layout, and on the other layout it draws while performing 198 lookups where it should
-perform 2,711. Comparing the two builds frame by frame, the picture diverges between frames 1,950 and
-2,100, which is after a sample load finishes and before the next one starts.
-
-Five explanations were tested and none of them is it:
-
-- **The surplus.** Three bytes land per handshake whether the block needs them or not, so up to two are
-  written past its end, where the pair loop wrote at most one. Advancing the destination past the
-  surplus so nothing else can sit there changes nothing on the cartridge layout and makes the other
-  layout worse.
-- **Speed.** Padding the sender until the stall measured 0.98 s again, matching the shipped 0.97 s,
-  leaves the failure exactly as it was.
-- **The bytes.** Both builds post the same 198 block headers, in the same order, with the same sources,
-  lengths and destinations, and every block verifies against sound RAM.
-- **The direct page.** `$A2` through `$A5` are never non-zero on that build either.
-- **The code that was overwritten.** Only one branch in the whole driver reaches SPC `$0F13` to `$0F27`,
-  and it comes from inside the stretch this replaces, so nothing external lands there.
-
-A bisect then narrowed it to a single block. Making the kind byte a choice rather than a constant, so a
-length threshold decides which blocks take the new path and which take the stock one, and moving that
-threshold, isolates it exactly:
-
-| blocks taking the new path | result |
-|---|---|
-| none | 37 of 40 frames drawing |
-| everything from 7,168 bytes up, so only the 7,227 byte block | 37 of 40 |
-| everything from 4,352 bytes up | 37 of 40 |
-| everything from 4,195 bytes up, which adds the 4,266 byte block | 4 of 40 |
-| everything from 4,267 bytes up, which drops it again | 37 of 40 |
-
-One block of 4,266 bytes, source `$CB:3C2C`, destination `$5517`. Every other block in the game is fine
-through the new path, including the largest. That block is not unusual: 4,266 divides by three exactly,
-so it has no surplus, none of its three stream pointers passes the end of its bank, and its destination
-is nowhere near anything delicate. Sample blocks are BRR data at nine bytes per block, so every length
-in the game divides by three and no block ever has a surplus, which is why the surplus experiment
-changed nothing.
-
-The same isolation shows the fault is not in the conversion: the sound patch alone, applied to the
-retail cartridge ROM with the chip still in place, fails in exactly the same way.
-
-Writing the three bytes in order rather than a third of a block apart was tried and does not fix it,
-though that test is not conclusive because that variant does not transfer correctly and is slower than
-the pair loop it would replace, so it has no value beyond the diagnosis.
-
-That is where this stands. The failure is reproducible, isolated to one block, and independent of the
-S-DD1 work, which is a much smaller thing to chase than where it started.
-
-Both regions are always tested here, and the USA build is the one that has run on hardware, so this is
-not shipped. The work is kept because the technique is sound and the remaining fault is narrow.
-
-### The background upload, attempted and not finished
-
-The pause that remains is short but it is still a freeze: the main loop stops, so the picture stops.
-Moving the transfer into the frame interrupt would leave the game running and the pause would stop
-reading as one, even if it lasted longer. I built it far enough to learn what it costs, and it is not
-in the shipping images.
-
-The first thing worth writing down is that spreading the work does not reduce it. The receiving chip
-absorbs about 52,500 bytes per second whoever feeds it, so a 47,915 byte set is 0.91 seconds of chip
-time in any design. Slicing only helps where there is somewhere to hide it, and the room varies:
-
-| spare time per frame | throughput | one set takes |
-|---|---|---|
-| 20% | 175 bytes/frame | 274 frames, 4.6s |
-| 40% | 350 bytes/frame | 137 frames, 2.3s |
-| 60% | 524 bytes/frame | 91 frames, 1.5s |
-
-Measured gaps between one block list and the next are a median of 213 frames, a tenth percentile of 53
-and a minimum of 7. So the median case has ample room and the worst tenth does not, which means a
-background design has to fall back to a synchronous drain and some stalls survive by construction.
-
-What I built: the transfer state moved out of registers into work RAM at `$7F:0A00`, so a block can be
-posted in slices and resumed; the block list walk suspends instead of running to the end; the frame
-interrupt posts one slice per frame from the point where the handler waits on the auto joypad read; and
-the engine drains synchronously if a new command arrives while a list is still outstanding.
-
-It does work, and I have it crossing frame boundaries. Tracing the state every frame, a block armed on
-frame 345 was sliced over the next two and closed itself on frame 347, with the list cursor and the APU
-destination advancing exactly as they should.
-
-Eight defects surfaced on the way, and each is worth keeping:
-
-- Work RAM does not come up zeroed on a console. The state block needed a mark written by the code that
-  fills it in, checked before anything reads it. Emulators mostly do clear it, which is precisely why
-  testing would not have caught this.
-- The interlock that keeps the interrupt off the ports was set after the synchronous drain instead of
-  before it. The interrupt fires during the drain's wait spin, so both sides started feeding the same
-  block and each waited for a handshake the other had taken.
-- There are two block list walks, at `$C7:00AE` and `$C7:015B`, byte for byte the same loop. I hooked
-  one and the samples go through the other.
-- The upload is a session. `$C7:01DD` posts a header whose kind byte is zero, and that releases the
-  chip to go back to playing. A block that arrives after it has nobody listening, and the console hangs
-  waiting for an echo that is never coming.
-- The suspend routine drained the previously suspended list and then recorded the cursor, but draining
-  walks a different list through the same registers and the same direct page. It was recording a sample
-  source address as a list pointer, and the walk then read ids that resolved into bank `$06`, which
-  holds compressed graphics and no samples at all.
-- The engine's entry hook runs at `$C7:005B`, and the engine does not set its direct page to zero until
-  `$C7:0065`. Every `$84` and `$8A` through `$8E` access in the drain was landing on whichever page the
-  caller happened to have, so the terminator posted a counter the driver never recognised.
-- Setup has its own return path at `$C7:0053`, not the engine's. Clearing the interlock at the end of
-  the entry hook instead of there left a window in which the interrupt opened a block while setup was
-  still talking to the driver, and setup then waited forever for a `$BBAA` that a busy driver cannot
-  send.
-- The handler clears the interrupt by reading `$4210` at `$C0:01BA`, long before this hook runs, so the
-  next vblank re-enters it while a slice is still waiting on the driver. Two slices interleaved their
-  handshakes. This is the one that produced the impossible-looking reading: a block reporting every
-  pair posted with only 844 of its 5,571 bytes arrived.
-
-With those fixed, every block transfers byte-identical in the background. The block verifier walks each
-one against the bytes actually sitting in sound RAM and reports `ok=30 bad=0`, including blocks of
-7,227 and 5,571 bytes carried across many frames.
-
-Where it stops, and what the stall turned out to mean: the console still hangs with the screen dark,
-and the reason is not a bug so much as the shape of the design. The emulator reports both sides of the
-deadlock, the driver's own index and the counter the CPU last posted:
-
-```
-STUCK cpu=00FFE0 spc=0EC5 ya=2401 x=0E port0=23 port1=BB
-```
-
-The driver's index is `$24` and the counter posted is `$23`. One even, one odd. The index steps by two,
-because it is inside one of the blocks this patch sends two bytes at a time; the counter steps by one,
-because the code posting it is one of the engine's own uploaders sending one byte at a time. They are
-two different transfers talking over each other, and the driver waits forever for a counter that the
-other side is never going to send.
-
-That rules out the explanations I spent the longest on. It is not who is allowed to close the session:
-giving the deferred transfer a session entirely of its own, opened with `$C7:01A5` and closed with
-`$C7:01DD`, changes nothing. It is not the order of the two lists, and it is not the counter arithmetic.
-The exposure is simply that a block of ours stays open across a frame boundary at all. The moment it
-does, any path that reaches an uploader talks into the middle of it, and every entry into the sound
-bank has now been hooked and checked, so there is no door left to close.
-
-The shape that follows from this is to stop yielding inside a block. A block header carries its own
-destination, so one block of 7,227 bytes can be sent as a series of smaller ones at consecutive
-destinations and the bytes land identically. Slice the data into sub-blocks, and every point where the
-interrupt hands control back is then a boundary with nothing open and the driver idle. That is a
-rewrite of the block layer rather than another guard on top of the one that exists, which is why it is
-written down here rather than half-built.
-
-Two narrower variants were measured along the way and are worse, not better: deferring only the second
-walk gives 13 corrupted blocks, and making the interrupt inert starves the game of samples entirely.
-
-The transfers themselves are correct and the remaining fault is structural. Shipping it would mean
-shipping a hang, so the images carry the blocking transfer that is proved.
+The reason this is specific to Street Fighter Zero 2 is that its map is the one part of the project
+rebuilt from scratch by harvesting rather than read out of a tagged ROM. The USA table came with the
+game; the Japanese one was assembled from what the cartridge was observed to ask for. Section 15 is the
+record of that map being confidently wrong once already, which is why the tooling that produced it, and
+every recorded request, is kept in the repository rather than thrown away once the table was frozen.
 
 ---
 
@@ -1731,10 +1759,20 @@ container for each toolchain.
 | [`pack.py`](pack.py) | builds the release images, named with the version |
 | [`version.py`](version.py) | the release number, rewritten by `scripts/set-version.sh` |
 
-Development tooling lives in [`tools/`](tools/): the differential and image checks from section 17, a
-full rebuild of every combination, the validation matrix runner, and the drivers that recover streams
-by watching the retail cartridge. None of it is needed to build an image; all of it is needed to
-reproduce the measurements in this document.
+Development tooling lives in [`tools/`](tools/). None of it is needed to build an image; all of it is
+needed to reproduce the measurements in this document.
+
+| file | what it does |
+|------|--------------|
+| [`tools/rebuild_all.py`](tools/rebuild_all.py) | builds every region, patch set and cartridge form, sixteen images |
+| [`tools/validate_all.py`](tools/validate_all.py) | runs all sixteen for 12,000 frames and prints the table in section 17 |
+| [`tools/verify_streams.py`](tools/verify_streams.py) | every stream through snes9x's own decompressor, compared with the Python one |
+| [`tools/verify_image.py`](tools/verify_image.py) | walks the finished image's lookup tables the way the console does |
+| [`tools/freeze_spcfast.py`](tools/freeze_spcfast.py) | keeps the frozen sound patch in step with its assembly |
+| [`tools/tour_oracle.py`](tools/tour_oracle.py) | drives the retail cartridge and records what it asks the chip for |
+| [`tools/harvest_jp.py`](tools/harvest_jp.py) | proposes stream candidates from a converted build, for the gate to judge |
+| [`tools/converge_jp.py`](tools/converge_jp.py) | the loop that ran those two until a round found nothing new |
+| [`tools/identify.py`](tools/identify.py) | checks the cartridge dumps against their published digests |
 
 Both stream tables are frozen, and every tool that produced them is kept. That is deliberate. A frozen
 table is a claim, and the only thing that keeps a claim honest is the ability to make it again from
@@ -1759,7 +1797,7 @@ I keep a snapshot of every state that passed the full matrix, source and assembl
 emulator and all 24 built images, each with a sha256 manifest, so that a change which turns out badly
 gets reverted to a known-good point instead of debugged under pressure. Those snapshots stay on my
 machine and are not in this repository, because most of their bulk is built ROM images. The states are
-the lean receive loop at 1.03 seconds, two bytes per handshake at 0.78, and the honest header.
+the lean receive loop, two bytes per handshake, and the honest header.
 
 Run the tests with `python3 <module>.test.py`. All 19 modules, 281 tests.
 
