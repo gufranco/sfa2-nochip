@@ -407,13 +407,24 @@ arch 65816
 !KIND_SITE = $0E846D             ; CPU $C7:046D, the kind byte the header posts
 !DATA_ENTRY = $0E8488            ; CPU $C7:0488, the stock data-phase stub
 !PAIR_ROUTINE = $0E84EB          ; CPU $C7:04EB, filler the sender is built in
-!SCRATCH = $1700                 ; a page of work RAM. WRAM $1540 to $1867 is
-                                 ; never read or written across a 2,500 frame
-                                 ; run of the retail cartridge, measured by
-                                 ; recording every address the console touches,
-                                 ; and this page sits inside it. Page aligned,
-                                 ; so direct page addressing costs no extra
-                                 ; cycle. Ten of its bytes are used
+!PRIVATE_STACK = $1FE0           ; the transfer's own stack. $1F3E to $1FE1 is
+                                 ; the larger of the two runs in the low 8K that
+                                 ; the console never reads and never writes
+                                 ; across a run of all eighteen fighters, on the
+                                 ; cartridge build and on the chip-free one, and
+                                 ; this is its top. The scheduler's own stack
+                                 ; sits above it and is idle while a task runs.
+                                 ;
+                                 ; A direct page was tried here first and is the
+                                 ; wrong instrument: code that runs inside the
+                                 ; transfer window reads its own variables from
+                                 ; page zero, so pointing the direct page
+                                 ; elsewhere corrupts whatever sits at the new
+                                 ; address. At $1700 that was the sprite buffer,
+                                 ; two garbage sprites in the opening; at $1F3E
+                                 ; it was state the chip bypass needs. A stack
+                                 ; has no such problem, because everything that
+                                 ; runs here pushes and pops in balance
 
 org !KIND_SITE
     db !THREE_BYTE               ; tell the driver this block carries triples
@@ -425,31 +436,42 @@ org !PAIR_ROUTINE
 
 cpu_send_triples:
     rep #$30
-    phd                          ; the caller's direct page, and the only thing
-                                 ; this routine leaves on the caller's stack.
-                                 ; That stack belongs to one of the game's
-                                 ; cooperative tasks and the next task's saved
-                                 ; state sits about thirty bytes below it, so a
-                                 ; frame any deeper than the stock path's walks
-                                 ; into it and the scheduler never wakes again
-    lda #!SCRATCH
-    tcd                          ; sixteen bytes of work space the transfer owns
-    stx $00                      ; the block length, needed again at the end
-    sty $02                      ; where the first stream reads from
-    txa
+    phx                          ; the block length. This and nothing else goes
+                                 ; on the caller's stack, which belongs to one of
+                                 ; the game's cooperative tasks: the scheduler at
+                                 ; $C0:00F8 packs those stacks about thirty bytes
+                                 ; apart and the frame interrupt lands on
+                                 ; whichever is current, so a frame the size the
+                                 ; three pointers need walks into the next task's
+                                 ; saved state. Every block still transfers, and
+                                 ; the scheduler then resumes a task whose stack
+                                 ; is not its own
+    tsc                          ; where the caller's stack stands
+    ldx #!PRIVATE_STACK
+    txs                          ; the transfer runs on a stack of its own, and
+    pha                          ; the caller's pointer rides there too
+
+    lda $01,s
+    tax
+    lda.l $000001,x              ; the length again, from the caller's stack
+    pha
     inc a
     inc a                        ; rounded up to a whole number of handshakes
     jsr cpu_third-$8000          ; N, the number of handshakes this block takes
-    sta $08
+    pha
+    tya                          ; the source this block reads from
+    clc
+    adc $01,s
+    clc
+    adc $01,s
+    pha                          ; the third stream, source plus twice N
     tya
     clc
-    adc $08
-    sta $04                      ; the second stream starts N bytes further in
-    clc
-    adc $08
-    sta $06                      ; and the third, N further still
+    adc $03,s
+    pha                          ; the second, source plus N
+    phy                          ; and the first, the source itself
 
-    lda $08
+    lda $07,s
     sta.l !PORT_DEST_L           ; N goes out on the two ports the block header
     sep #$20                     ; has finished with, alongside the opening
     lda #$00                     ; counter the driver is already waiting for
@@ -459,17 +481,17 @@ cpu_send_triples:
     bne .opening                 ; worked out where its three streams go
 
     rep #$30
-    lda $08
+    lda $07,s
     tax                          ; X counts the handshakes down
     ldy #$0000                   ; Y indexes all three streams at once
     sep #$20
 
 .handshake:
-    lda ($02),y                  ; first stream
+    lda ($01,s),y                ; first stream
     sta.l !PORT_DATA0
-    lda ($04),y                  ; second
+    lda ($03,s),y                ; second
     sta.l !PORT_DATA1
-    lda ($06),y                  ; third
+    lda ($05,s),y                ; third
     sta.l !PORT_DEST_HIGH_L
     tya
     inc a                        ; the counter is the index, one ahead
@@ -484,16 +506,23 @@ cpu_send_triples:
 
 .sent:
     rep #$30
-    lda $02
+    lda $01,s
     clc
-    adc $00
+    adc $09,s
     tay                          ; Y = source start plus the block length, which
                                  ; is what the stock walk reads the next record
                                  ; from. The running index cannot stand in for
                                  ; it because it counts handshakes, not bytes
-    lda $08
-    tax                          ; the last counter posted, kept across the pld
-    pld                          ; the caller's direct page again
+    lda $07,s
+    tax                          ; the last counter posted, kept across the unwind
+    pla
+    pla
+    pla
+    pla
+    pla                          ; the five words this routine parked
+    pla
+    tcs                          ; back on the caller's stack
+    pla                          ; and the length comes off it
     txa
     sep #$20
     jmp.w !RESUME
@@ -513,47 +542,45 @@ cpu_send_triples:
 ; division for all 65,536 values. It runs once per block, against thousands of
 ; handshakes, so its cost does not matter.
 ;
-; The working values live in the scratch page rather than on the stack for the
-; same reason the transfer does.
-;
-; Entry:  A 16-bit holding the value to divide, X/Y 16-bit, direct page at
-;         !SCRATCH
+; Entry:  A 16-bit holding the value to divide, X/Y 16-bit, running on the
+;         private stack
 ; Exit:   A 16-bit holding the quotient, X clobbered
 ; ---------------------------------------------------------------------------
 
 cpu_third:
-    sta $0a                      ; the value stays for the correction
+    pha                          ; the value stays for the correction
     lsr a
     lsr a                        ; the first term
-    sta $0c                      ; the running quotient
+    pha                          ; the running quotient sits above it
     ldx #$0006
 
 .term:
     lsr a
     lsr a                        ; each term is a quarter of the one before
-    sta $0e
+    pha
     clc
-    adc $0c
-    sta $0c
-    lda $0e                      ; the term again, for the next quarter
+    adc $03,s
+    sta $03,s
+    pla                          ; the term again, for the next quarter
     dex
     bne .term
 
 .correct:
-    lda $0a                      ; the value
+    lda $03,s                    ; the value
     sec
-    sbc $0c
+    sbc $01,s
     sec
-    sbc $0c
+    sbc $01,s
     sec
-    sbc $0c                      ; what three times the quotient leaves behind
+    sbc $01,s                    ; what three times the quotient leaves behind
     cmp #$0003
     bcc .exact
-    lda $0c
+    lda $01,s
     inc a
-    sta $0c                      ; one more, and check what is left again
+    sta $01,s                    ; one more, and check what is left again
     bra .correct
 
 .exact:
-    lda $0c                      ; the quotient
+    pla                          ; the quotient
+    plx                          ; and drop the value it came from
     rts

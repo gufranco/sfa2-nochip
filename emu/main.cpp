@@ -141,6 +141,8 @@ extern "C" void sf_note_read(uint32 address)
     last_read_bank = bank;
 }
 
+extern unsigned char sf_wram_touched[0x20000];
+
 extern "C" void sf_note_write(uint32 address)
 {
     if (getenv("SFRING") && ((((unsigned long)Registers.PBPC >> 16) & 0xFF) == 0xC7
@@ -150,6 +152,12 @@ extern "C" void sf_note_write(uint32 address)
         ring_addr[slot] = (unsigned long)address;
         ring_stack[slot] = (unsigned)Registers.S.W;
         ring_frame[slot] = frames_seen;
+    }
+    const unsigned written = (address >> 16) & 0xFF;
+    if (written == 0x7E || written == 0x7F) {
+        sf_wram_touched[((written - 0x7E) << 16) | (address & 0xFFFF)] = 1;
+    } else if (address < 0x2000) {
+        sf_wram_touched[address & 0x1FFF] = 1;
     }
     if ((address & 0xFFFC) != 0x2140) {
         return;

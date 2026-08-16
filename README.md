@@ -863,12 +863,23 @@ bytes. Adding a probe that sank the frame another 32 bytes made the game fail af
 118, which settles it: the transfer was overwriting the next task's saved state, and the scheduler
 resumed a task whose stack pointer was no longer its own.
 
-The fix is that the transfer keeps nothing on the caller's stack. It swaps the direct page to a page of
-work RAM it owns, keeps the three source pointers, the length and the count there, and swaps back at
-the end. Two bytes on the caller's stack, for the direct page itself, against the stock path's four.
-The page is `$1700`, inside `$1540` to `$1867`, which the console never reads or writes across a 2,500
-frame run of the retail cartridge measured by recording every address it touches. The divider works
-there too, for the same reason.
+The fix is that the transfer keeps almost nothing on the caller's stack: two bytes for the block
+length, against the stock path's four. Everything else, the three source pointers, the count and the
+divider's working values, lives on a stack of the routine's own at `$1FE0`, and the caller's pointer
+rides there so it can be switched back.
+
+The first attempt at that moved the direct page instead, and it was wrong in a way worth keeping.
+Pointing the direct page at a spare page of work RAM corrupts whatever sits there, because code that
+runs inside the transfer window reads its own variables from page zero and does not know the page
+moved. At `$1700` it landed on the sprite buffer and put two garbage sprites in the top left corner of
+the opening; at `$1F3E` it landed on state the chip bypass needs and cost the chip-free images 33,858
+graphics lookups. A stack has no such failure mode, because everything that runs in that window pushes
+and pops in balance, so nothing outside the region is touched.
+
+The region is `$1F3E` to `$1FE1`, the larger of the two runs in the low 8K that the console never reads
+and never writes across a run of all eighteen fighters, on the cartridge build and on the chip-free one
+alike. The measurement that chose `$1700` recorded reads only, and a buffer the processor fills and
+then hands to DMA is never read, so it looked free and was not.
 
 The result on both cartridges:
 
@@ -1813,7 +1824,7 @@ gets reverted to a known-good point instead of debugged under pressure. Those sn
 machine and are not in this repository, because most of their bulk is built ROM images. The states are
 the lean receive loop, two bytes per handshake, three bytes per handshake, and the honest header.
 
-Run the tests with `python3 <module>.test.py`. All 27 modules, 354 tests.
+Run the tests with `python3 <module>.test.py`. All 27 modules, 355 tests.
 
 ---
 

@@ -201,14 +201,17 @@ class RetailRomTest(unittest.TestCase):
 
         self.assertLessEqual(end, spcfast.BLOCK_HEADER)
 
-    def test_the_transfer_leaves_only_the_direct_page_on_the_caller_stack(self):
+    def test_the_transfer_leaves_only_the_length_on_the_caller_stack(self):
         patched = spcfast.apply(self.usa)
         entry = 0x0704EB
 
-        self.assertEqual(patched[entry], 0xC2)
-        self.assertEqual(patched[entry + 1], 0x30)
-        self.assertEqual(patched[entry + 2], 0x0B)
-        self.assertEqual(patched[entry + 3], 0xA9)
+        self.assertEqual(patched[entry : entry + 3].hex(), "c230da")
+
+    def test_the_transfer_switches_to_its_own_stack_before_doing_anything(self):
+        patched = spcfast.apply(self.usa)
+        entry = 0x0704EB
+
+        self.assertEqual(patched[entry + 3 : entry + 9].hex(), "3ba2e01f9a48")
 
     def test_the_stock_driver_tail_is_untouched(self):
         patched = spcfast.apply(self.usa)
