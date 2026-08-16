@@ -16,19 +16,14 @@ sdd1ref = load("sdd1ref")
 romtools = load("romtools")
 rombuild = load("rombuild")
 jpstreams = load("jpstreams")
+usastreams = load("usastreams")
 
 BATCH = 200
 
 SETS = {
     "usa": (
         ROOT / "roms" / "sfa2-usa-final.sfc",
-        lambda: [
-            (entry.source, entry.length)
-            for entry in rombuild.load_entries(
-                romtools.load(ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc")
-            )
-            if entry.length
-        ],
+        lambda: list(usastreams.STREAMS),
     ),
     "jp": (
         ROOT / "roms" / "sfz2-jp-final.sfc",

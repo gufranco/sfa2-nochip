@@ -45,19 +45,15 @@ python3 shinakuma.py build/step1.sfc         build/step2.sfc
 # 2. redirect the seven places that ask the chip to decompress
 python3 build.py asm/sdd1-bypass.asm build/step2.sfc bypass.sfc
 
-# 3. decompress every stream and lay out the 96 Mbit image
-python3 rombuild.py asm/bypass.sfc roms/sfa2-usa-vc-sound-restored.sfc build/nochip.sfc
-
-# 4. make the image declare itself: no coprocessor, real size
-python3 header.py build/nochip.sfc build/sfa2-usa-nochip.sfc
+# 3. and 4. decompress every stream, lay out the 96 Mbit image, declare it honestly
+python3 pack.py usa
 ```
 
 Steps 1 and 2 alone give a patched retail cartridge that still needs the chip but loses the pause. All
 four give the chip-free 96 Mbit image. Order matters, and section 21 explains why.
 
-For Street Fighter Zero 2, use `asm/sdd1-bypass-jp.asm` and pass
-the stream table in [`jpstreams.py`](jpstreams.py) instead of a tagged ROM, because no tagged
-Japanese ROM exists.
+For Street Fighter Zero 2, `python3 pack.py jp`. Both regions build from the retail cartridge alone:
+the stream tables are frozen into [`usastreams.py`](usastreams.py) and [`jpstreams.py`](jpstreams.py).
 
 **Status:** the USA builds run on real hardware, the 96 Mbit chip-free image on a Game Doctor SF7 and
 both that image and the 4 MB patched cartridge on an FXPAK Pro. The Japanese build is still settling:
@@ -1402,7 +1398,12 @@ is the SDL one instead, which is a few hundred lines and entirely under control.
 **TL;DR.** Everything here rebuilds from your own ROMs with Docker and Python 3. No ROM data is
 distributed.
 
-You supply the retail cartridges. Nothing in this repository contains game data, and nothing ever will.
+You supply the retail cartridges, and nothing else. Both stream tables are frozen into the repository,
+so building needs only your own dumps. DarkAkuma's tagged ROM is required to regenerate
+[`usastreams.py`](usastreams.py), never to build an image, and an image built from the frozen table is
+byte-identical to one built by reading the tags.
+
+Nothing in this repository contains game data, and nothing ever will.
 
 ### Prerequisites
 
@@ -1418,6 +1419,9 @@ python3 shinakuma.py  build/step1.sfc          build/step2.sfc     # unlock Shin
 python3 build.py      asm/sdd1-bypass.asm build/step2.sfc bypass.sfc
 python3 rombuild.py   asm/bypass.sfc roms/sfa2-usa-vc-sound-restored.sfc build/nochip.sfc
 python3 header.py     build/nochip.sfc build/final.sfc             # declare it honestly
+
+The tagged ROM in step 3 is only needed to regenerate [`usastreams.py`](usastreams.py). `pack.py` reads
+the frozen table and needs nothing but the retail cartridge.
 ```
 
 Order matters. The sample and Shin Akuma patches apply to the retail ROM; the bypass must come next
@@ -1425,7 +1429,7 @@ because the re-layout reclaims the compressed data it reads; the header must com
 checksums the finished image.
 
 For the Japanese build, substitute `asm/sdd1-bypass-jp.asm`, and supply the stream map from
-[`jpstreams.py`](jpstreams.py) rather than a tagged ROM, since none exists for that region.
+[`jpstreams.py`](jpstreams.py), since no tagged ROM exists for that region.
 
 ### Building the release images
 
@@ -1494,7 +1498,8 @@ container for each toolchain.
 | [`sdd1.py`](sdd1.py) | the S-DD1 decompressor |
 | [`sdd1ref.py`](sdd1ref.py) | differential test against the C reference |
 | [`sdd1find.py`](sdd1find.py) | content search for streams |
-| [`sdd1map.py`](sdd1map.py) | stream map extraction from a tagged ROM |
+| [`sdd1map.py`](sdd1map.py) | stream table extraction from a tagged ROM |
+| [`usastreams.py`](usastreams.py) | the USA stream table, transcribed from the tags |
 | [`sdd1sites.py`](sdd1sites.py) | finds every write to the chip's registers |
 | [`sdd1tables.py`](sdd1tables.py) | builds and verifies the lookup tables |
 | [`layout.py`](layout.py) | the interleaved address arithmetic |
@@ -1518,6 +1523,14 @@ Development tooling lives in [`tools/`](tools/): the differential and image chec
 full rebuild of every combination, the validation matrix runner, and the drivers that recover streams
 by watching the retail cartridge. None of it is needed to build an image; all of it is needed to
 reproduce the measurements in this document.
+
+Both stream tables are frozen, and every tool that produced them is kept. That is deliberate. A frozen
+table is a claim, and the only thing that keeps a claim honest is the ability to make it again from
+scratch. [`sdd1map.py`](sdd1map.py) still reads the tags out of the tagged ROM, and a test asserts that
+what it extracts is exactly what [`usastreams.py`](usastreams.py) holds, so the freeze cannot drift
+without the suite noticing. The Japanese side has no such single source, which is why the drivers that
+recovered it, and the recorded requests they produced, are kept as well: if a screen nobody has visited
+ever turns out to be wrong, the same loop is pointed at it and the table grows again.
 
 Assembly that goes into the ROM lives in [`asm/`](asm/): the bypass patches for both regions, the shared
 translate routine, the sample upload patch, and the Shin Akuma unlock for both regions.

@@ -21,6 +21,7 @@ header = _load("header")
 spcfast = _load("spcfast")
 shinakuma = _load("shinakuma")
 jpstreams = _load("jpstreams")
+usastreams = _load("usastreams")
 version = _load("version")
 gate = _load("gate")
 
@@ -54,9 +55,8 @@ def manifest_line(name, image):
 
 
 def entries_for(region):
-    if REGIONS[region].tagged is None:
-        return rombuild.entries_from_map({str(s): n for s, n in jpstreams.STREAMS})
-    return rombuild.load_entries(romtools.load(REGIONS[region].tagged))
+    table = jpstreams.STREAMS if region == "jp" else usastreams.STREAMS
+    return rombuild.entries_from_map({str(source): length for source, length in table})
 
 
 def assemble_bypass(region, cart, workdir):

@@ -17,6 +17,7 @@ sdd1tables = _load("sdd1tables")
 romtools = _load("romtools")
 rombuild = _load("rombuild")
 jpstreams = _load("jpstreams")
+usastreams = _load("usastreams")
 requests_jp = _load("requests_jp")
 
 SCAN_BUDGET = 64
@@ -31,10 +32,7 @@ TAGGED = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
 
 
 def table(region):
-    if region == "jp":
-        return sorted(jpstreams.STREAMS)
-    entries = rombuild.load_entries(romtools.load(TAGGED))
-    return sorted((entry.source, entry.length) for entry in entries if entry.length)
+    return sorted(jpstreams.STREAMS if region == "jp" else usastreams.STREAMS)
 
 
 def requests(region):

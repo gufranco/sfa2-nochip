@@ -37,9 +37,8 @@ def variants(retail):
 
 
 def entries_for(region):
-    if region == "usa":
-        return rombuild.load_entries(romtools.load(TAGGED))
-    return rombuild.entries_from_map({str(s): n for s, n in load("jpstreams").STREAMS})
+    table = load("jpstreams" if region == "jp" else "usastreams").STREAMS
+    return rombuild.entries_from_map({str(source): length for source, length in table})
 
 
 def assemble(region, name, cart):
