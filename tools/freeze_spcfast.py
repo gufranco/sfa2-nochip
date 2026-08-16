@@ -124,7 +124,11 @@ def rewrite(source, shared, hook_body, hook_sites):
     end = source.index("\n)\n", start) + 3
     updated = source[:start] + rendered + source[end:]
     if hook_body is None:
-        return updated
+        return re.sub(
+            r'FRAME_HOOK = bytes\.fromhex\("[0-9a-f]*"\)',
+            'FRAME_HOOK = bytes.fromhex("")',
+            updated,
+        )
     updated = re.sub(
         r'FRAME_HOOK = bytes\.fromhex\("[0-9a-f]*"\)',
         f'FRAME_HOOK = bytes.fromhex("{hook_body.hex()}")',
