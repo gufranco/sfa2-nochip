@@ -1399,9 +1399,46 @@ is the SDL one instead, which is a few hundred lines and entirely under control.
 distributed.
 
 You supply the retail cartridges, and nothing else. Both stream tables are frozen into the repository,
-so building needs only your own dumps. DarkAkuma's tagged ROM is required to regenerate
+so building needs only your own dumps.
+
+The scripts expect these exact filenames in `roms/`, and every digest below is of the whole file with no
+copier header, 4,194,304 bytes each:
+
+| `roms/sfa2-usa-final.sfc` | Street Fighter Alpha 2 (USA), retail |
+|---------------------------|--------------------------------------|
+| size | 4,194,304 |
+| CRC32 | `9C59DDFF` |
+| MD5 | `aa3c90fa7d89eb3dc3389a9436bd0cf8` |
+| SHA-1 | `f4ede150b5281f7f5d7e3188c6d9163c2bc66475` |
+| SHA-256 | `910a29f834199c63c22beddc749baba746da9922196a553255deade59f4fc127` |
+
+| `roms/sfz2-jp-final.sfc` | Street Fighter Zero 2 (Japan), retail |
+|--------------------------|---------------------------------------|
+| size | 4,194,304 |
+| CRC32 | `7455A7CF` |
+| MD5 | `70761ab447f48091a8dc437fd2e9c14d` |
+| SHA-1 | `a0db1045fb308d6a2975a4d305b69f877be727a4` |
+| SHA-256 | `f15731675e22dbf3882b777b2d8cd541a637dfdf5d8880c83903cf1e0b64590e` |
+
+| `roms/sfa2-usa-vc-sound-restored.sfc` | the tagged dump, only to regenerate the USA table |
+|---------------------------------------|---------------------------------------------------|
+| size | 4,194,304 |
+| CRC32 | `72A9E2C1` |
+| MD5 | `058471b547ebc59b43704bca664cb690` |
+| SHA-1 | `dfa7cd6f713c44b6a01a6f91de068eb7ace63676` |
+| SHA-256 | `f8aa2ae1f4bc993092fc282a883ecaf669269c17a175a5f43fa95e9da6459dc0` |
+
+SHA-256 is the one that decides. The other three are there so you can cross-check a file against the
+community databases that still key on them, and the size is there because it rejects the wrong file for
+one `stat` call. The third file is needed only by [`sdd1map.py`](sdd1map.py) when regenerating
 [`usastreams.py`](usastreams.py), never to build an image, and an image built from the frozen table is
-byte-identical to one built by reading the tags.
+byte-identical to one built by reading its tags.
+
+Check what you have before building anything:
+
+```
+python3 tools/identify.py
+```
 
 Nothing in this repository contains game data, and nothing ever will.
 
@@ -1500,6 +1537,7 @@ container for each toolchain.
 | [`sdd1find.py`](sdd1find.py) | content search for streams |
 | [`sdd1map.py`](sdd1map.py) | stream table extraction from a tagged ROM |
 | [`usastreams.py`](usastreams.py) | the USA stream table, transcribed from the tags |
+| [`tools/identify.py`](tools/identify.py) | checks the cartridge dumps against their published digests |
 | [`sdd1sites.py`](sdd1sites.py) | finds every write to the chip's registers |
 | [`sdd1tables.py`](sdd1tables.py) | builds and verifies the lookup tables |
 | [`layout.py`](layout.py) | the interleaved address arithmetic |
