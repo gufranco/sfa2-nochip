@@ -1270,9 +1270,34 @@ Five explanations were tested and none of them is it:
 - **The code that was overwritten.** Only one branch in the whole driver reaches SPC `$0F13` to `$0F27`,
   and it comes from inside the stretch this replaces, so nothing external lands there.
 
-What is left is that the USA build sends 198 sample blocks against Japan's 73 and so exercises far more
-of this path. That is where the next attempt should start, with the two builds' first divergence at
-frame 1,950 as the anchor.
+A bisect then narrowed it to a single block. Making the kind byte a choice rather than a constant, so a
+length threshold decides which blocks take the new path and which take the stock one, and moving that
+threshold, isolates it exactly:
+
+| blocks taking the new path | result |
+|---|---|
+| none | 37 of 40 frames drawing |
+| everything from 7,168 bytes up, so only the 7,227 byte block | 37 of 40 |
+| everything from 4,352 bytes up | 37 of 40 |
+| everything from 4,195 bytes up, which adds the 4,266 byte block | 4 of 40 |
+| everything from 4,267 bytes up, which drops it again | 37 of 40 |
+
+One block of 4,266 bytes, source `$CB:3C2C`, destination `$5517`. Every other block in the game is fine
+through the new path, including the largest. That block is not unusual: 4,266 divides by three exactly,
+so it has no surplus, none of its three stream pointers passes the end of its bank, and its destination
+is nowhere near anything delicate. Sample blocks are BRR data at nine bytes per block, so every length
+in the game divides by three and no block ever has a surplus, which is why the surplus experiment
+changed nothing.
+
+The same isolation shows the fault is not in the conversion: the sound patch alone, applied to the
+retail cartridge ROM with the chip still in place, fails in exactly the same way.
+
+Writing the three bytes in order rather than a third of a block apart was tried and does not fix it,
+though that test is not conclusive because that variant does not transfer correctly and is slower than
+the pair loop it would replace, so it has no value beyond the diagnosis.
+
+That is where this stands. The failure is reproducible, isolated to one block, and independent of the
+S-DD1 work, which is a much smaller thing to chase than where it started.
 
 Both regions are always tested here, and the USA build is the one that has run on hardware, so this is
 not shipped. The work is kept because the technique is sound and the remaining fault is narrow.
