@@ -1250,12 +1250,29 @@ On the Japanese ROM it works exactly as intended. Both layouts draw on 38 of 40 
 lookup count is unchanged at 1,501, all 73 blocks verify byte for byte against sound RAM, and the
 longest stall falls from 0.80 s to 0.70 s.
 
-On the USA ROM it does not. Every block still verifies, the sound chip ends idle rather than deadlocked,
-and the console does not crash, but the game stops progressing: 5 of 40 frames drawing on the cartridge
-layout, and on the other layout it draws but performs 198 lookups where it should perform 2,711. The
-USA build sends 198 sample blocks against Japan's 73, so it exercises far more of this path, and the
-difference is somewhere in that. Direct page `$A2` through `$A5` are free on that build too, so it is
-not the pointers.
+On the USA ROM it does not. Every block still verifies, the sound chip ends idle rather than
+deadlocked, and the console does not crash, but the game stops progressing: 5 of 40 frames drawing on
+the cartridge layout, and on the other layout it draws while performing 198 lookups where it should
+perform 2,711. Comparing the two builds frame by frame, the picture diverges between frames 1,950 and
+2,100, which is after a sample load finishes and before the next one starts.
+
+Five explanations were tested and none of them is it:
+
+- **The surplus.** Three bytes land per handshake whether the block needs them or not, so up to two are
+  written past its end, where the pair loop wrote at most one. Advancing the destination past the
+  surplus so nothing else can sit there changes nothing on the cartridge layout and makes the other
+  layout worse.
+- **Speed.** Padding the sender until the stall measured 0.98 s again, matching the shipped 0.97 s,
+  leaves the failure exactly as it was.
+- **The bytes.** Both builds post the same 198 block headers, in the same order, with the same sources,
+  lengths and destinations, and every block verifies against sound RAM.
+- **The direct page.** `$A2` through `$A5` are never non-zero on that build either.
+- **The code that was overwritten.** Only one branch in the whole driver reaches SPC `$0F13` to `$0F27`,
+  and it comes from inside the stretch this replaces, so nothing external lands there.
+
+What is left is that the USA build sends 198 sample blocks against Japan's 73 and so exercises far more
+of this path. That is where the next attempt should start, with the two builds' first divergence at
+frame 1,950 as the anchor.
 
 Both regions are always tested here, and the USA build is the one that has run on hardware, so this is
 not shipped. The work is kept because the technique is sound and the remaining fault is narrow.
