@@ -1707,6 +1707,7 @@ python3 mapcheck.py roms/sfz2-jp-final.sfc     # shape of the table
 python3 gate.py                                 # the gate both regions must pass
 python3 tools/verify_streams.py                 # every stream against the C reference
 python3 tools/verify_image.py                   # every stream inside the finished image
+python3 tools/tour_audio.py both-free           # every fighter, checked for corrupt sound uploads
 ```
 
 The first reports duplicate sources, streams that fail to decode, and the worst key-scan distance. The
@@ -1782,6 +1783,7 @@ needed to reproduce the measurements in this document.
 | [`tools/verify_image.py`](tools/verify_image.py) | walks the finished image's lookup tables the way the console does |
 | [`tools/freeze_spcfast.py`](tools/freeze_spcfast.py) | keeps the frozen sound patch in step with its assembly |
 | [`tools/tour_oracle.py`](tools/tour_oracle.py) | drives the retail cartridge and records what it asks the chip for |
+| [`tools/tour_audio.py`](tools/tour_audio.py) | plays every fighter in turn and reports any corrupt upload or wedged frame loop |
 | [`tools/harvest_jp.py`](tools/harvest_jp.py) | proposes stream candidates from a converted build, for the gate to judge |
 | [`tools/converge_jp.py`](tools/converge_jp.py) | the loop that ran those two until a round found nothing new |
 | [`tools/identify.py`](tools/identify.py) | checks the cartridge dumps against their published digests |
@@ -1811,7 +1813,7 @@ gets reverted to a known-good point instead of debugged under pressure. Those sn
 machine and are not in this repository, because most of their bulk is built ROM images. The states are
 the lean receive loop, two bytes per handshake, three bytes per handshake, and the honest header.
 
-Run the tests with `python3 <module>.test.py`. All 26 modules, 340 tests.
+Run the tests with `python3 <module>.test.py`. All 27 modules, 354 tests.
 
 ---
 

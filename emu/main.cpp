@@ -552,6 +552,7 @@ int main(int argc, char **argv)
 
             if (slot == 0 && i > 0) {
                 S9xReset();
+                blk_pending = false;
                 if (use_game_doctor_map) {
                     install_game_doctor_map(mirror_shift);
                 }
@@ -572,10 +573,13 @@ int main(int argc, char **argv)
                     start_pressed = (slot % 60) < 8;
                 }
             } else if (slot < 4200) {
-                const int cursor = Memory.RAM[0x07A2];
-                if (cursor != target) {
-                    right_pressed = (slot % 24) < 5;
-                }
+                const int columns = getenv("SFTOURCOLUMNS") ? atoi(getenv("SFTOURCOLUMNS")) : 5;
+                const int rights = target % columns;
+                const int downs = target / columns;
+                const int press = (slot - 3000) / 24;
+                const bool tick = ((slot - 3000) % 24) < 5;
+                right_pressed = tick && press < rights;
+                down_pressed = tick && press >= rights && press < rights + downs;
             } else if (slot < 4400) {
                 confirm_pressed = (slot % 25) < 10;
             } else if (slot >= budget - 1500) {
