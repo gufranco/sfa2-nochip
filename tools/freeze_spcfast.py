@@ -89,7 +89,7 @@ def frame_hook_site(rom):
 def runs_for(rom):
     if not FRAME_HOOK:
         return PATCH
-    return PATCH + ((frame_hook_site(rom), FRAME_HOOK),)
+    return (*PATCH, (frame_hook_site(rom), FRAME_HOOK))
 
 
 """

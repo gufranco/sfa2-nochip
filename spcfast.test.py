@@ -63,10 +63,10 @@ class DriverTest(unittest.TestCase):
 
         self.assertLessEqual(at, spcfast.DRIVER_BASE + spcfast.BLOCK_HEADER)
 
-    def test_the_processor_posts_the_two_byte_kind(self):
+    def test_the_processor_posts_the_three_byte_kind(self):
         at, data = self.run_covering(0x07046D)
 
-        self.assertEqual(data[0x07046D - at], 0x02)
+        self.assertEqual(data[0x07046D - at], 0x03)
 
 
 class ChecksumTest(unittest.TestCase):
@@ -164,19 +164,51 @@ class RetailRomTest(unittest.TestCase):
             )
         ]
 
-        self.assertEqual(listing, ["mov y,$0f4", "cmp y,#$00", "bne $0ebd"])
+        self.assertEqual(listing, ["mov y,$0f4", "bne $0ebd", "mov a,$0e6"])
 
     def test_the_patched_dispatch_selects_on_the_kind_byte(self):
         patched = spcfast.apply(self.usa)
         base = spcfast.DRIVER_BASE
         listing = [
             i.text
-            for i in spc700.disassemble(patched[base : base + 0x10000], 0x0EC3, 0x0EC3, count=3)
+            for i in spc700.disassemble(patched[base : base + 0x10000], 0x0EC1, 0x0EC1, count=3)
         ]
 
         self.assertEqual(listing[0], "mov a,$0e6")
-        self.assertEqual(listing[1], "cmp a,#$02")
+        self.assertEqual(listing[1], "cmp a,#$03")
         self.assertTrue(listing[2].startswith("beq"))
+
+    def test_the_driver_echoes_only_after_reading_every_port(self):
+        patched = spcfast.apply(self.usa)
+        base = spcfast.DRIVER_BASE
+        listing = [
+            i.text
+            for i in spc700.disassemble(patched[base : base + 0x10000], 0x0EE4, 0x0EE4, count=6)
+        ]
+
+        self.assertEqual(listing[2], "mov x,$0f6")
+        self.assertEqual(listing[3], "mov a,$0f7")
+        self.assertEqual(listing[4], "mov $0f4,y")
+
+    def test_the_receive_loop_stops_before_the_header_parse(self):
+        patched = spcfast.apply(self.usa)
+        base = spcfast.DRIVER_BASE
+        end = 0x0EDC
+        for instruction in spc700.disassemble(
+            patched[base : base + 0x10000], 0x0EDC, 0x0EDC, count=14
+        ):
+            end = instruction.address + instruction.size
+
+        self.assertLessEqual(end, spcfast.BLOCK_HEADER)
+
+    def test_the_transfer_leaves_only_the_direct_page_on_the_caller_stack(self):
+        patched = spcfast.apply(self.usa)
+        entry = 0x0704EB
+
+        self.assertEqual(patched[entry], 0xC2)
+        self.assertEqual(patched[entry + 1], 0x30)
+        self.assertEqual(patched[entry + 2], 0x0B)
+        self.assertEqual(patched[entry + 3], 0xA9)
 
     def test_the_stock_driver_tail_is_untouched(self):
         patched = spcfast.apply(self.usa)

@@ -34,6 +34,13 @@ static unsigned long apu_writes_this_frame = 0;
 static unsigned long apu_writer_pc[64];
 static unsigned long apu_writer_hits[64];
 
+#define WRITE_RING 512
+static unsigned long ring_pc[WRITE_RING];
+static unsigned long ring_addr[WRITE_RING];
+static unsigned ring_stack[WRITE_RING];
+static unsigned ring_frame[WRITE_RING];
+static unsigned long ring_next = 0;
+
 static bool blk_pending = false;
 static unsigned blk_bank, blk_src, blk_len, blk_dest;
 static unsigned blk_ok, blk_bad;
@@ -72,8 +79,39 @@ static unsigned scan_start_addr = 0;
 
 unsigned char sf_wram_touched[0x20000];
 
+static bool ring_skipped(unsigned long pc)
+{
+    const char *ranges = getenv("SFRINGSKIP");
+    if (!ranges) { return false; }
+    unsigned long low = 0, high = 0;
+    bool second = false;
+    for (const char *p = ranges; ; p++) {
+        const int digit = (*p >= '0' && *p <= '9') ? *p - '0'
+                        : (*p >= 'a' && *p <= 'f') ? *p - 'a' + 10
+                        : (*p >= 'A' && *p <= 'F') ? *p - 'A' + 10 : -1;
+        if (digit >= 0) {
+            if (second) { high = high * 16 + (unsigned long)digit; }
+            else { low = low * 16 + (unsigned long)digit; }
+            continue;
+        }
+        if (*p == '-') { second = true; continue; }
+        if (second && pc >= low && pc <= high) { return true; }
+        low = 0;
+        high = 0;
+        second = false;
+        if (*p == 0) { return false; }
+    }
+}
+
 extern "C" void sf_note_read(uint32 address)
 {
+    if (getenv("SFREADRING") && !ring_skipped((unsigned long)Registers.PBPC)) {
+        const unsigned long slot = ring_next++ % WRITE_RING;
+        ring_pc[slot] = (unsigned long)Registers.PBPC;
+        ring_addr[slot] = (unsigned long)address;
+        ring_stack[slot] = (unsigned)Registers.S.W;
+        ring_frame[slot] = frames_seen;
+    }
     const unsigned bank = (address >> 16) & 0xFF;
     if (bank == 0x7E || bank == 0x7F) {
         sf_wram_touched[((bank - 0x7E) << 16) | (address & 0xFFFF)] = 1;
@@ -105,6 +143,14 @@ extern "C" void sf_note_read(uint32 address)
 
 extern "C" void sf_note_write(uint32 address)
 {
+    if (getenv("SFRING") && ((((unsigned long)Registers.PBPC >> 16) & 0xFF) == 0xC7
+                            || (address & 0xFFFC) == 0x2140)) {
+        const unsigned long slot = ring_next++ % WRITE_RING;
+        ring_pc[slot] = (unsigned long)Registers.PBPC;
+        ring_addr[slot] = (unsigned long)address;
+        ring_stack[slot] = (unsigned)Registers.S.W;
+        ring_frame[slot] = frames_seen;
+    }
     if ((address & 0xFFFC) != 0x2140) {
         return;
     }
@@ -573,6 +619,14 @@ int main(int argc, char **argv)
                 }
             }
         }
+        const int tick_every = getenv("SFTICK") ? atoi(getenv("SFTICK")) : 0;
+        if (tick_every > 0 && (i % tick_every) == 0) {
+            printf("TICK frame=%d main=%02X nmi=%02X ready=%02X busy=%02X mode=%02X port0=%02X spc=%04X\n",
+                   i, (unsigned)Memory.RAM[0x1A96], (unsigned)Memory.RAM[0x1A9A],
+                   (unsigned)Memory.RAM[0x1A99], (unsigned)Memory.RAM[0x1A9C],
+                   (unsigned)Memory.RAM[0x1A9D], (unsigned)SNES::smp.apuram[0xF4],
+                   (unsigned)SNES::smp.regs.pc);
+        }
         const int bright_every = getenv("SFBRIGHT") ? atoi(getenv("SFBRIGHT")) : 0;
         if (bright_every > 0 && (i % bright_every) == bright_every - 1) {
             printf("BRIGHT frame=%d value=%.1f\n", i, frame_brightness());
@@ -741,6 +795,18 @@ int main(int argc, char **argv)
                 printf("READS bank=%02X count=%lu\n", bank, sf_bank_reads[bank]);
             }
         }
+    }
+    if (getenv("SFRING") || getenv("SFREADRING")) {
+        const unsigned long shown = ring_next < WRITE_RING ? ring_next : WRITE_RING;
+        for (unsigned long i = 0; i < shown; i++) {
+            const unsigned long slot = (ring_next - shown + i) % WRITE_RING;
+            printf("RING frame=%u pc=%06lX addr=%06lX s=%04X\n",
+                   ring_frame[slot], ring_pc[slot], ring_addr[slot], ring_stack[slot]);
+        }
+    }
+    if (getenv("SFWRAM")) {
+        FILE *out = fopen(getenv("SFWRAM"), "wb");
+        if (out) { fwrite(Memory.RAM, 1, 0x20000, out); fclose(out); }
     }
     printf("CPU pbpc=%06X sdd1=%d\n", (unsigned)Registers.PBPC, (int)Settings.SDD1);
     printf("RESULT load=ok frames=%u size=%ux%u lit=%lu rows=%lu banks=%u\n",

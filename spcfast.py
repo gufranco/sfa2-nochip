@@ -42,7 +42,7 @@ PATCH = (
     (0x070401, bytes.fromhex("eaeaeaeaeaeaeaea")),
     (0x070420, bytes.fromhex("eaeaeaeaeaeaeaea")),
     (0x07043B, bytes.fromhex("eaeaeaeaeaeaeaea")),
-    (0x07046D, bytes.fromhex("02")),
+    (0x07046D, bytes.fromhex("03")),
     (0x070479, bytes.fromhex("eaeaeaeaeaeaeaea")),
     (0x070488, bytes.fromhex("4ceb04")),
     (0x070498, bytes.fromhex("eaeaeaeaeaeaeaea")),
@@ -50,18 +50,48 @@ PATCH = (
     (
         0x0704EB,
         bytes.fromhex(
-            "5adac2208a1a4aaae220b90000c88f412100b90000c88f422100a9008f402100ebcaf023b90000c8ebcf402100d0fa1a1aeb8f412100b90000c88f422100eb8f402100ebcad0ddeb48c220a302186304a8e22068fafa4cb504"
+            "c2300ba900175b860084028a1a1a205d0585089818650885041865088506a5088f422100e220a9008f40"
+            "2100cf402100d0fac230a508aaa00000e220b1028f412100b1048f422100b1068f432100981a8f402100"
+            "c8caf008cf402100d0fa80dcc230a502186500a8a508aa2b8ae2204cb504850a4a4a850ca206004a4a85"
+            "0e18650c850ca50ecad0f2a50a38e50c38e50c38e50cc903009007a50c1a850c80e9a50c60"
         ),
     ),
     (0x072B13, bytes.fromhex("eb")),
+    (0x072B15, bytes.fromhex("d0fce4e66803f04c7e")),
+    (0x072B1F, bytes.fromhex("d00de4f5cb")),
     (
-        0x072B15,
-        bytes.fromhex("ad00d0fae4e66802f0157ef4d00de4f5cbf4d714fcd0f3ab152fef10e72f217ef4d0f8e4f5"),
+        0x072B25,
+        bytes.fromhex(
+            "d714fcd0f3ab152fef10e72f237ef4f00410fa2f1be4f5d714f8f6e4f7cbf4d7ca7dd7c8fcd0e6ab15ab"
+            "c9abcb2fde"
+        ),
     ),
-    (0x072B3C, bytes.fromhex("e4f6cbf4fcd714fcd0eeab152fea")),
     (0x072B55, bytes.fromhex("e4")),
-    (0x072B57, bytes.fromhex("ebf7da14ebf4e4f5c4e6cbf46800f0172faa")),
+    (
+        0x072B57,
+        bytes.fromhex("ebf7da14ebf4e4f5c4e6cbf46800f0172faa1a14baf67a14dac87af6daca8d00cb"),
+    ),
+    (0x072B79, bytes.fromhex("fc2fb6")),
 )
+
+
+JOYPAD_WAIT = bytes([0xAD, 0x12, 0x42, 0x4A, 0xB0, 0xFA])
+FRAME_HOOK = bytes.fromhex("")
+FRAME_HOOK_SITES = (0x000208, 0x00020C)
+
+
+def frame_hook_site(rom):
+    for site in FRAME_HOOK_SITES:
+        window = rom[site : site + len(JOYPAD_WAIT)]
+        if window == JOYPAD_WAIT or window[: len(FRAME_HOOK)] == FRAME_HOOK:
+            return site
+    raise ValueError("the frame interrupt's joypad wait is at neither known position")
+
+
+def runs_for(rom):
+    if not FRAME_HOOK:
+        return PATCH
+    return (*PATCH, (frame_hook_site(rom), FRAME_HOOK))
 
 
 def checksum(rom):
@@ -81,7 +111,7 @@ def write_checksum(rom):
 
 
 def patch_bytes():
-    return sum(len(data) for _, data in PATCH)
+    return sum(len(data) for _, data in PATCH) + len(FRAME_HOOK)
 
 
 def find_blank_gates(rom):
@@ -98,7 +128,7 @@ def is_stock(rom):
 
 
 def is_patched(rom):
-    return all(rom[at : at + len(data)] == data for at, data in PATCH)
+    return all(rom[at : at + len(data)] == data for at, data in runs_for(rom))
 
 
 def apply(rom):
@@ -108,7 +138,7 @@ def apply(rom):
         raise ValueError("this is not an unpatched retail Alpha 2 or Zero 2 ROM")
 
     patched = bytearray(rom)
-    for at, data in PATCH:
+    for at, data in runs_for(rom):
         patched[at : at + len(data)] = data
     return write_checksum(patched)
 
@@ -129,7 +159,7 @@ def main(argv):
 
     print(f"  driver        {DRIVER_BASE + RECEIVE_LOOP:#08x}  two bytes per handshake")
     print(f"  blank gates   {len(find_blank_gates(rom))} sites retired")
-    print(f"  patch         {patch_bytes()} bytes in {len(PATCH)} runs")
+    print(f"  patch         {patch_bytes()} bytes in {len(runs_for(rom))} runs")
     print(f"[done] {output} ({len(patched):,} bytes)")
     return 0
 
