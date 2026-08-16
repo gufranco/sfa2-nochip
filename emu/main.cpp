@@ -69,9 +69,16 @@ static unsigned char window_pages[64][256];
 static unsigned long scan_run = 0;
 static unsigned scan_start_addr = 0;
 
+unsigned char sf_wram_touched[0x20000];
+
 extern "C" void sf_note_read(uint32 address)
 {
     const unsigned bank = (address >> 16) & 0xFF;
+    if (bank == 0x7E || bank == 0x7F) {
+        sf_wram_touched[((bank - 0x7E) << 16) | (address & 0xFFFF)] = 1;
+    } else if (address < 0x2000) {
+        sf_wram_touched[address & 0x1FFF] = 1;
+    }
     if (bank >= 0xC0) {
         window_pages[bank - 0xC0][(address >> 8) & 0xFF] = 1;
     }
@@ -458,6 +465,9 @@ int main(int argc, char **argv)
 
     report_probes();
 
+    static unsigned char wram_shadow[0x20000];
+    memcpy(wram_shadow, Memory.RAM, sizeof(wram_shadow));
+
     unsigned portrait_id = 0xFFFF;
     int portrait_wait = 0;
     unsigned char portrait_done[256] = {0};
@@ -575,6 +585,35 @@ int main(int argc, char **argv)
                 printf("PORTRAIT id=%02X frame=%d\n", id, i);
             }
         }
+        if (getenv("SFSTATE")) {
+            const unsigned background_state_in_wram = 0x10A00;
+            const uint8 *state = &Memory.RAM[background_state_in_wram];
+            printf("STATE frame=%d pairs=%u busy=%u walk=%u flight=%u"
+                   " cursor=%04X dest=%04X ticket=%02X fe=%02X ready=%04X ticks=%u opens=%u parks=%u\n",
+                   i,
+                   (unsigned)(state[0] | (state[1] << 8)),
+                   (unsigned)state[0x0A], (unsigned)state[0x0B], (unsigned)state[0x0C],
+                   (unsigned)(state[0x0E] | (state[0x0F] << 8)),
+                   (unsigned)(state[0x12] | (state[0x13] << 8)),
+                   (unsigned)state[0x14],
+                   (unsigned)Memory.RAM[0x00FE],
+                   (unsigned)(state[0x18] | (state[0x19] << 8)),
+                   (unsigned)(state[0x1A] | (state[0x1B] << 8)),
+                   (unsigned)(state[0x1C] | (state[0x1D] << 8)),
+                   (unsigned)(state[0x1E] | (state[0x1F] << 8)));
+        }
+        if (getenv("SFWRAM")) {
+            const int watched = getenv("SFWRAMSIZE") ? atoi(getenv("SFWRAMSIZE")) : 0x2000;
+            unsigned changed = 0;
+            for (int address = 0; address < watched; address++) {
+                const uint8 now = Memory.RAM[address];
+                if (now != wram_shadow[address]) {
+                    changed++;
+                    wram_shadow[address] = now;
+                }
+            }
+            printf("WRAM frame=%d changed=%u\n", i, changed);
+        }
         if (hash_out) {
             fprintf(hash_out, "%d %016llx\n", i, frame_hash());
         }
@@ -673,6 +712,21 @@ int main(int argc, char **argv)
         for (int i = 0; i < 64 && apu_writer_hits[i]; i++) {
             printf("APUPC pc=%06lX writes=%lu\n", apu_writer_pc[i], apu_writer_hits[i]);
         }
+    }
+    if (getenv("SFWRAMMAP")) {
+        unsigned run_start = 0, best_start = 0, best_len = 0, len = 0;
+        for (unsigned address = 0; address <= 0x20000; address++) {
+            const bool free_here = address < 0x20000 && !sf_wram_touched[address];
+            if (free_here) {
+                if (len == 0) { run_start = address; }
+                len++;
+            } else {
+                if (len > best_len) { best_len = len; best_start = run_start; }
+                if (len >= 64) { printf("WRAMFREE start=%05X len=%u\n", run_start, len); }
+                len = 0;
+            }
+        }
+        printf("WRAMFREE largest start=%05X len=%u\n", best_start, best_len);
     }
     if (getenv("SFREADS")) {
         for (int bank = 0; bank < 256; bank++) {

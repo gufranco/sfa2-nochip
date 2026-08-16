@@ -1147,7 +1147,7 @@ builds run, not that they run to a stopwatch.
 
 ### Checks that do not need the game running
 
-Three of them, and between them they cover everything except whether the table is complete.
+Four of them, and between them they cover everything except whether the table is complete.
 
 **Every stream against the reference decompressor.** [`tools/verify_streams.py`](tools/verify_streams.py)
 sends all 2,815 USA and 2,855 Japanese streams through snes9x's own `sdd1emu.cpp` in a container and
@@ -1167,6 +1167,20 @@ sources, every entry decodes to exactly its recorded length, the worst key scan 
 and every request in [`requests_jp.py`](requests_jp.py) is covered with a length at least as large. That
 last clause is the one that earns its keep: 1,661 addresses recorded from working hardware, and it
 rejected a table that had invented eighteen streams and truncated two real ones.
+
+**The sound patch against its own source.** [`spcfast.py`](spcfast.py) carries the sound patch as
+frozen byte runs rather than calling the assembler, which keeps the build independent of a toolchain
+but lets the table drift away from [`asm/spc-fast-upload.asm`](asm/spc-fast-upload.asm) without anything
+noticing. It had drifted, and three rounds of assembly changes reached no image at all before I worked
+out why. [`tools/freeze_spcfast.py`](tools/freeze_spcfast.py) assembles both regions and compares the
+result against what the frozen table produces, byte for byte; `--check` reports without rewriting.
+
+```
+python3 tools/freeze_spcfast.py --check
+  jp: the frozen table reproduces the assembler exactly
+  usa: the frozen table reproduces the assembler exactly
+  25 runs, 300 bytes
+```
 
 ### Reading the brightness metric
 
@@ -1211,23 +1225,59 @@ Selecting Shin Akuma in game. I can prove the unlock flag is set in exactly the 
 substitution code is documented above, but my scripted input never lands the cursor on Akuma. The
 selection itself needs a human with a controller.
 
-### One idea considered and not built
+### The background upload, attempted and not finished
 
-Making the sample upload non-blocking, so it hides behind the pre-fight animation, would take the
-perceived pause close to zero. I did not build it, for one specific reason: two different subsystems
-write the same four APU ports.
+The pause that remains is short but it is still a freeze: the main loop stops, so the picture stops.
+Moving the transfer into the frame interrupt would leave the game running and the pause would stop
+reading as one, even if it lasted longer. I built it far enough to learn what it costs, and it is not
+in the shipping images.
 
-```
-bank $C7:  33 sites, 155,748 writes   the uploader
-bank $C0:   8 sites,      43 writes   the game's sound-command interface
-```
+The first thing worth writing down is that spreading the work does not reduce it. The receiving chip
+absorbs about 52,500 bytes per second whoever feeds it, so a 47,915 byte set is 0.91 seconds of chip
+time in any design. Slicing only helps where there is somewhere to hide it, and the room varies:
 
-Today that is safe only because the upload blocks the main loop, so a sound command can never land in
-the middle of a handshake. A background upload would collide on almost every fight, because the versus
-screen is exactly when the announcer plays. Doing it safely means slicing the transfer inside the frame,
-after the game's own command dispatch, which means touching the command path too. And its failure mode
-is a sample arriving late, which every check listed above would happily report as green. I would rather
-ship 0.78 seconds I can prove than zero I cannot.
+| spare time per frame | throughput | one set takes |
+|---|---|---|
+| 20% | 175 bytes/frame | 274 frames, 4.6s |
+| 40% | 350 bytes/frame | 137 frames, 2.3s |
+| 60% | 524 bytes/frame | 91 frames, 1.5s |
+
+Measured gaps between one block list and the next are a median of 213 frames, a tenth percentile of 53
+and a minimum of 7. So the median case has ample room and the worst tenth does not, which means a
+background design has to fall back to a synchronous drain and some stalls survive by construction.
+
+What I built: the transfer state moved out of registers into work RAM at `$7F:0A00`, so a block can be
+posted in slices and resumed; the block list walk suspends instead of running to the end; the frame
+interrupt posts one slice per frame from the point where the handler waits on the auto joypad read; and
+the engine drains synchronously if a new command arrives while a list is still outstanding.
+
+It does work, and I have it crossing frame boundaries. Tracing the state every frame, a block armed on
+frame 345 was sliced over the next two and closed itself on frame 347, with the list cursor and the APU
+destination advancing exactly as they should.
+
+Four defects surfaced on the way, and each is worth keeping:
+
+- Work RAM does not come up zeroed on a console. The state block needed a mark written by the code that
+  fills it in, checked before anything reads it. Emulators mostly do clear it, which is precisely why
+  testing would not have caught this.
+- The interlock that keeps the interrupt off the ports was set after the synchronous drain instead of
+  before it. The interrupt fires during the drain's wait spin, so both sides started feeding the same
+  block and each waited for a handshake the other had taken.
+- There are two block list walks, at `$C7:00AE` and `$C7:015B`, byte for byte the same loop. I hooked
+  one and the samples go through the other.
+- The upload is a session. `$C7:01DD` posts a header whose kind byte is zero, and that releases the
+  chip to go back to playing. A block that arrives after it has nobody listening, and the console hangs
+  waiting for an echo that is never coming.
+
+Where it stopped: with the session held open across frames, the deferred walk desynchronises. One block
+was posted with a source in bank `$06`, which holds compressed graphics and no samples at all, so the
+walk had read past the end of its list. An earlier block took 1,787 port writes against the 588 its
+length calls for. The console then hangs at `$C7:0344` with the screen black, which the block verifier
+catches and reports as `BLKBAD`.
+
+That is where it sits. The mechanism is sound and the remaining fault is in how the suspended walk
+tracks its list across the engine's other work. Shipping it would mean shipping a hang, so the images
+carry the blocking transfer that is proved.
 
 ---
 
