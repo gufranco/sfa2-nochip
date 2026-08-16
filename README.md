@@ -1225,6 +1225,41 @@ Selecting Shin Akuma in game. I can prove the unlock flag is set in exactly the 
 substitution code is documented above, but my scripted input never lands the cursor on Akuma. The
 selection itself needs a human with a controller.
 
+### Three bytes per handshake, working on one region and not the other
+
+The pair loop above moves two bytes per handshake at about 17.5 SPC700 cycles per byte. Three is
+better, and the reason it is better is not the extra port: it is that three separate destination
+pointers let the store index step by one, so the page carry that made two bytes the practical limit
+disappears. The receiver becomes a wait, three port reads, three indexed stores and an echo, 42 cycles
+for three bytes, or 14 per byte.
+
+Fitting it took the whole budget. The two addresses the stock driver branches into, `$0EBD` and
+`$0EFF`, cannot move, which leaves 66 bytes for the loops. The three byte loop and its setup do not fit
+in that, but replacing the shortened header parse leaves 21 spare bytes behind it, and the setup lives
+there. The two extra stream pointers go in direct page `$A2` through `$A5`, which two independent
+checks agree the driver never touches: no instruction anywhere in the uploaded driver names them, and
+across a 12,000 frame run they never hold a non-zero value.
+
+The sender needs the handshake count, which is the block length divided by three, and the console's
+divider at `$4204` must not be used for it. The game divides in five places of its own, none in the
+sound bank, and this code runs inside a sound engine call that can land between the game writing its
+operands and reading its result. Seven terms of a quarter, a sixteenth and so on, with a correction,
+give the same answer for all 65,536 values and touch no shared hardware.
+
+On the Japanese ROM it works exactly as intended. Both layouts draw on 38 of 40 sampled frames, the
+lookup count is unchanged at 1,501, all 73 blocks verify byte for byte against sound RAM, and the
+longest stall falls from 0.80 s to 0.70 s.
+
+On the USA ROM it does not. Every block still verifies, the sound chip ends idle rather than deadlocked,
+and the console does not crash, but the game stops progressing: 5 of 40 frames drawing on the cartridge
+layout, and on the other layout it draws but performs 198 lookups where it should perform 2,711. The
+USA build sends 198 sample blocks against Japan's 73, so it exercises far more of this path, and the
+difference is somewhere in that. Direct page `$A2` through `$A5` are free on that build too, so it is
+not the pointers.
+
+Both regions are always tested here, and the USA build is the one that has run on hardware, so this is
+not shipped. The work is kept because the technique is sound and the remaining fault is narrow.
+
 ### The background upload, attempted and not finished
 
 The pause that remains is short but it is still a freeze: the main loop stops, so the picture stops.
