@@ -17,12 +17,24 @@ jpstreams = load_module("jpstreams")
 rombuild = load_module("rombuild")
 romtools = load_module("romtools")
 
-TAGGED = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
+TAGGED_ROM = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
 
 
 class ShapeTest(unittest.TestCase):
-    def test_the_table_holds_every_tagged_stream(self):
-        self.assertEqual(len(usastreams.STREAMS), 2815)
+    def test_the_table_holds_every_tagged_stream_plus_the_harvested_ones(self):
+        self.assertEqual(len(usastreams.TAGGED), 2815)
+        self.assertEqual(len(usastreams.STREAMS), 2815 + len(usastreams.HARVESTED))
+
+    def test_the_harvested_entries_are_not_in_the_tagged_set(self):
+        tagged = {source for source, _ in usastreams.TAGGED}
+
+        for source, _ in usastreams.HARVESTED:
+            self.assertNotIn(source, tagged, f"{source:#08x}")
+
+    def test_the_table_is_the_tagged_set_merged_with_the_harvested_one(self):
+        self.assertEqual(
+            usastreams.STREAMS, tuple(sorted(usastreams.TAGGED + usastreams.HARVESTED))
+        )
 
     def test_sources_are_unique(self):
         sources = [source for source, _ in usastreams.STREAMS]
@@ -46,13 +58,13 @@ class ShapeTest(unittest.TestCase):
         self.assertNotEqual(set(usastreams.STREAMS), set(jpstreams.STREAMS))
 
 
-@unittest.skipUnless(TAGGED.exists(), "the tagged ROM is not present")
+@unittest.skipUnless(TAGGED_ROM.exists(), "the tagged ROM is not present")
 class RegenerationTest(unittest.TestCase):
     def test_the_frozen_table_matches_what_the_tags_say(self):
-        entries = rombuild.load_entries(romtools.load(TAGGED))
+        entries = rombuild.load_entries(romtools.load(TAGGED_ROM))
         extracted = tuple((entry.source, entry.length) for entry in entries if entry.length)
 
-        self.assertEqual(extracted, usastreams.STREAMS)
+        self.assertEqual(extracted, usastreams.TAGGED)
 
 
 if __name__ == "__main__":

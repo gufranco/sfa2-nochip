@@ -19,7 +19,7 @@
 # file from the tagged ROM must reproduce it exactly; that equality is the check
 # that the freeze is faithful.
 
-STREAMS = (
+TAGGED = (
     # ROM bank 0x00, window bank $C0: 10 streams, 8,048 decompressed bytes
     (0x007890, 832),
     (0x007998, 832),
@@ -2878,3 +2878,21 @@ STREAMS = (
     (0x3E0F7E, 560),
     (0x3E0FAE, 65536),
 )
+
+# Two streams the tags do not record. The tagged Virtual Console dump is a
+# static source, so it can only name transfers its tagging captured; these two
+# are asked for by the running game and were found by logging every transfer
+# the S-DD1 performs on the cartridge, where the chip decides what is a stream
+# and what is not.
+#
+# 0x19F8FE is requested 256 bytes at a time, 108 times across an attract cycle
+# and a tour of all eighteen fighters. 0x1BED29 is requested 64 bytes at a
+# time, 12 times, and supplies four tiles beside the character portraits in the
+# attract montage; without it the game reads zeros and draws garbage there.
+# Both were checked against the bytes the chip itself produces.
+HARVESTED = (
+    (0x19F8FE, 256),
+    (0x1BED29, 64),
+)
+
+STREAMS = tuple(sorted(TAGGED + HARVESTED))
