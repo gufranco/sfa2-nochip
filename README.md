@@ -1418,6 +1418,39 @@ contain the start of another stream, which is the rule that caught a run sized 2
 `decompress().end` without subtracting the read-ahead: the neighbouring stream begins one byte inside
 it, and the first build wrote a zero over its first byte.
 
+### How much room the frame interrupt has, measured because something needed it
+
+Not a change, a constraint, and the most useful thing to come out of an abandoned attempt at gizaha's
+health bar smoothing. Anything added to the frame interrupt at `$C0:01A5` competes for a budget that
+turns out to be small, and the way to measure it is to add nothing but time.
+
+A routine reached from `$00:0358` that touches no register at all, only padding, gives:
+
+| padding | result over 12,000 frames |
+|---|---|
+| 60 cycles | identical, every sampled frame |
+| 90 cycles | the fight diverges |
+| 120, 150, 180 cycles | diverges, figures identical to 90 |
+
+So the interrupt has somewhere between 60 and 90 cycles of slack, and past that the game's own timing
+shifts. For scale, a single transfer set up by hand costs about 76 cycles before the call that reaches
+it, which is why the smoothing could not be fitted: the minimum useful version is already over budget
+before it does anything twice.
+
+Moving the vertical interrupt a scanline earlier, which is what gizaha does to buy himself room, makes
+it worse here rather than better. With 60 cycles of padding it damages the screen; with 180 it damages
+it identically; and 60 with the line left alone is clean. The line is harmful in this build on its own,
+independently of what it is meant to pay for. His build carries forty-five speed changes this one does
+not, so his interrupt and this one are not the same shape.
+
+Three smaller things were established on the way and are recorded so nobody re-derives them. Channel 7
+is the game's raster channel, enabled by the single `lda #$80` into `$420C`, so it is never free to
+borrow. The status area is painted from a queue of eight-byte transfer descriptors in work RAM at
+`$0400`, walked at `$C0:04A6`, each naming an increment, a video address, a size, a source and a bank.
+And the draining part of the health bar is fed from ROM at `$C8:EE41` into `$412F` and its neighbours,
+not from the `$5C60` region, which is the static frame around it and is repainted wholesale on
+alternate frames.
+
 ### Sixty frames a second on three stages, built and taken back out
 
 gizaha's `stage mods.asm` makes three stage animations run every frame instead of every other: the
