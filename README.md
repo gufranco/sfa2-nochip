@@ -1580,14 +1580,27 @@ instrument is gated behind an environment variable and is inert without it.
 | `SFFLAG`, `SFSELECT` | read the Shin Akuma flag and the selected character |
 | `SFDRIVE`, `SFFORCE` | closed-loop input driving |
 | `SFGRID`, `SFSETTLE` | sweep the character roster, one slot per interval |
-| `SFTOUR`, `SFTOURBUDGET` | reset between characters and play each one in turn |
+| `SFTOUR`, `SFTOURBUDGET`, `SFTOURROSTER`, `SFTOURCOLUMNS` | reset between characters and play each one in turn, walking the select grid |
+| `SFTICK` | print the frame loop's own counters, the sound chip's program counter and port zero, periodically |
+| `SFRING`, `SFREADRING`, `SFRINGSKIP` | keep the last 512 accesses with the program counter that made each, and skip named counter ranges |
+| `SFWRAM`, `SFWRAMMAP` | dump work RAM, or report every region the console never touches |
 | `SFHASH` | a hash of every frame, for comparing two runs |
 | `SFDUMP`, `SFSHOTEVERY` | write frames as images, periodically or over a range |
 | `SFPORTRAIT` | capture one frame per character, keyed on the cursor |
 
-`SFTOUR` is the one that closed the loop. It resets the console between characters, waits out the boot,
-walks the cursor by reading its value out of work RAM rather than by counting frames, confirms only once
-it has arrived, then lets the match run and moves on. Reading the game's own state instead of trusting
+`SFRING` is the one that found the stack bug. Everything else said the transfer was perfect, because it
+was; the ring of recent accesses showed the main thread's last act before it stopped, and it was in the
+scheduler rather than in the sound engine.
+
+`SFWRAMMAP` recorded reads only until it cost a sprite. A buffer the processor fills and hands to DMA is
+never read, so it looked untouched and was not. It records writes as well now, and a region is only
+free if a run of all eighteen fighters, on both cartridge forms, touches it in neither direction.
+
+`SFTOUR` resets the console between characters, waits out the boot, walks the select grid by counted
+presses, confirms, then lets the match run and moves on. It walked by reading the cursor out of work RAM
+until that turned out to be measuring nothing: the address does not hold a plain index, no slot ever
+matched its target, and eighteen slots replayed the same fighter while reporting success. Reading the
+game's own state instead of trusting
 timing is what makes it reliable where every open-loop schedule before it drifted.
 
 Two of them I had to fix after they distorted my own results, which is at the end of section 12.
