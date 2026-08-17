@@ -21,6 +21,9 @@ RUN sed -i 's|^inline uint8 S9xGetByte (uint32 Address)\n{|&|' /src/snes9x/getse
 RUN perl -0pi -e 's/(inline void S9xSetByte \(uint8 Byte, uint32 Address\)\n\{)/extern "C" void sf_note_write(uint32);\n$1\n\tsf_note_write(Address);/' /src/snes9x/getset.h \
     && grep -c "sf_note_write" /src/snes9x/getset.h
 
+RUN perl -0pi -e 's/(inline void S9xSetWord \(uint16 Word, uint32 Address, enum s9xwrap_t w = WRAP_NONE, enum s9xwriteorder_t o = WRITE_01\)\n\{)/extern "C" void sf_note_write_word(uint32);\n$1\n\tsf_note_write_word(Address);/' /src/snes9x/getset.h \
+    && grep -c "sf_note_write_word" /src/snes9x/getset.h
+
 RUN perl -0pi -e 's/(\tsf_bank_reads\[\(Address >> 16\) & 0xFF\]\+\+;)/$1\n\tsf_note_read(Address);/' /src/snes9x/getset.h \
     && perl -0pi -e 's/(extern unsigned long sf_bank_reads\[256\];)/$1\nextern "C" void sf_note_read(uint32);/' /src/snes9x/getset.h \
     && grep -c "sf_note_read" /src/snes9x/getset.h
@@ -33,9 +36,11 @@ RUN make STATIC_LINKING=1 -j"$(nproc)" \
     && cp snes9x_libretro.so /src/snes9x/libretro/snes9x_libretro.a
 
 COPY main.cpp /src/frontend/main.cpp
+COPY windowed_lorom.cpp /src/frontend/windowed_lorom.cpp
+COPY windowed_lorom.h /src/frontend/windowed_lorom.h
 
-RUN g++ -O2 -std=c++11 -o /src/sfemu /src/frontend/main.cpp \
-        -I/src/snes9x -I/src/snes9x/libretro -I/src/snes9x/libretro/libretro-common/include \
+RUN g++ -O2 -std=c++11 -o /src/sfemu /src/frontend/main.cpp /src/frontend/windowed_lorom.cpp \
+        -I/src/frontend -I/src/snes9x -I/src/snes9x/libretro -I/src/snes9x/libretro/libretro-common/include \
         -I/src/snes9x/apu -I/src/snes9x/apu/bapu \
         /src/snes9x/libretro/snes9x_libretro.a
 

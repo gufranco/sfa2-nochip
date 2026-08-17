@@ -11,6 +11,8 @@
 #include "dma.h"
 #include "bapu/snes/snes.hpp"
 
+#include "windowed_lorom.h"
+
 unsigned long sf_bank_reads[256];
 
 static unsigned long loop_a_ipl, loop_a_drv, loop_b_ipl, loop_b_drv;
@@ -72,6 +74,177 @@ static void verify_pending(void)
     }
 }
 
+static uint32 vline_address(void)
+{
+    static int resolved = 0;
+    static uint32 wanted = 0;
+    if (!resolved) {
+        resolved = 1;
+        const char *text = getenv("SFVLINEAT");
+        wanted = text ? (uint32)strtoul(text, NULL, 16) : 0x2100;
+    }
+    return wanted;
+}
+
+static unsigned long vline_samples = 0;
+static unsigned long vline_total = 0;
+static unsigned vline_low = 0xFFFF;
+static unsigned vline_high = 0;
+static unsigned long vline_histogram[16];
+
+static uint32 poked_address(void)
+{
+    static uint32 wanted = 0xFFFFFFFF;
+    if (wanted == 0xFFFFFFFF) {
+        const char *text = getenv("SFPOKE");
+        wanted = text ? (uint32)strtoul(text, NULL, 16) : 0;
+    }
+    return wanted;
+}
+
+static uint32 poked_length(void)
+{
+    static uint32 wanted = 0xFFFFFFFF;
+    if (wanted == 0xFFFFFFFF) {
+        const char *text = getenv("SFPOKELEN");
+        wanted = text ? (uint32)strtoul(text, NULL, 16) : 1;
+    }
+    return wanted ? wanted : 1;
+}
+
+static void apply_forced_writes(void)
+{
+    const char *text = getenv("SFWRITE");
+    if (!text) {
+        return;
+    }
+    while (*text) {
+        char *after_address = NULL;
+        const unsigned long address = strtoul(text, &after_address, 16);
+        if (after_address == text || *after_address != ':') {
+            return;
+        }
+        const char *digits = after_address + 1;
+        char *after_value = NULL;
+        const unsigned long value = strtoul(digits, &after_value, 16);
+        if (after_value == digits) {
+            return;
+        }
+        Memory.RAM[address & 0x1FFFF] = (uint8)(value & 0xFF);
+        if ((size_t)(after_value - digits) > 2) {
+            Memory.RAM[(address + 1) & 0x1FFFF] = (uint8)((value >> 8) & 0xFF);
+        }
+        text = (*after_value == ',') ? after_value + 1 : after_value;
+    }
+}
+
+static void note_poke_word(uint32 address)
+{
+    const uint32 wanted = poked_address();
+    const unsigned bank = (address >> 16) & 0xFF;
+    if (!wanted || (bank != 0x7E && address >= 0x2000)) {
+        return;
+    }
+    const uint32 inside = address & 0xFFFF;
+    if (inside < wanted || inside >= wanted + poked_length()) {
+        return;
+    }
+    printf("POKE frame=%u addr=%06X pc=%06lX\n", frames_seen, (unsigned)address,
+           (unsigned long)Registers.PBPC);
+}
+
+static void note_vline(uint32 address)
+{
+    if (!getenv("SFVLINE") || (address & 0xFFFF) != vline_address()) {
+        return;
+    }
+    const char *pc_text = getenv("SFVLINEPC");
+    if (pc_text) {
+        const unsigned long wanted_pc = strtoul(pc_text, NULL, 16);
+        if (((unsigned long)Registers.PBPC & 0xFFFFFF) != wanted_pc) {
+            return;
+        }
+    }
+    const unsigned line = (unsigned)CPU.V_Counter;
+    if (vline_samples < 12 && getenv("SFVLINEPCS")) {
+        printf("VLINEPC pc=%06lX addr=%06X line=%u\n", (unsigned long)Registers.PBPC,
+               (unsigned)address, line);
+    }
+    vline_samples++;
+    vline_total += line;
+    if (line < vline_low) { vline_low = line; }
+    if (line > vline_high) { vline_high = line; }
+    vline_histogram[line < 256 ? line / 16 : 15]++;
+}
+
+static const uint32 PREFIGHT_TABLE_FIRST = 0x9440;
+static const uint32 PREFIGHT_TABLE_LAST = 0x9440 + 0x6080;
+
+static unsigned long prefight_writes = 0;
+static unsigned prefight_first_frame = 0;
+static unsigned prefight_last_frame = 0;
+static unsigned prefight_busy_frames = 0;
+static unsigned prefight_bursts = 0;
+#define PREFIGHT_GAP 4
+
+static const uint32 PLAYER_ONE_CHARACTER = 0x07A2;
+static const uint32 PLAYER_TWO_CHARACTER = 0x0A22;
+static const uint32 PLAYER_ONE_VARIANT = 0x1C20;
+
+static const uint32 SOUND_GROUP_INDEX = 0x00008F;
+static const uint32 SOUND_GROUP_IDS = 0x000080;
+static const uint32 SOUND_ALLOC_LOW = 0x00008A;
+static const uint32 SOUND_ALLOC_HIGH = 0x00008B;
+static const uint32 SOUND_KEY_INDEX = 0x00008E;
+
+extern "C" void sf_note_write_word(uint32 address)
+{
+    note_vline(address);
+    note_poke_word(address);
+    if (!getenv("SFTABLE")) {
+        return;
+    }
+    const unsigned bank = (address >> 16) & 0xFF;
+    const uint32 inside = address & 0xFFFF;
+    if (bank != 0x7E && address >= 0x2000) {
+        return;
+    }
+    if (inside < PREFIGHT_TABLE_FIRST || inside >= PREFIGHT_TABLE_LAST) {
+        return;
+    }
+    if (prefight_writes == 0) {
+        prefight_first_frame = frames_seen;
+        prefight_bursts = 1;
+        prefight_busy_frames = 1;
+    } else if (frames_seen != prefight_last_frame) {
+        prefight_busy_frames++;
+        if (frames_seen > prefight_last_frame + PREFIGHT_GAP) {
+            prefight_bursts++;
+        }
+    }
+    prefight_last_frame = frames_seen;
+    prefight_writes++;
+}
+
+static unsigned sound_list_id(void)
+{
+    return (unsigned)Memory.RAM[(Registers.S.W + 1) & 0x1FFF];
+}
+
+static void report_group_walk(void)
+{
+    const uint8 *page = Memory.RAM;
+    printf("GROUP frame=%u pc=%06lX group=%02X ids=%02X,%02X,%02X alloc=%04X key=%02X list=%02X\n",
+           frames_seen, (unsigned long)Registers.PBPC,
+           (unsigned)page[SOUND_GROUP_INDEX],
+           (unsigned)page[SOUND_GROUP_IDS],
+           (unsigned)page[SOUND_GROUP_IDS + 1],
+           (unsigned)page[SOUND_GROUP_IDS + 2],
+           (unsigned)page[SOUND_ALLOC_LOW] | ((unsigned)page[SOUND_ALLOC_HIGH] << 8),
+           (unsigned)page[SOUND_KEY_INDEX],
+           sound_list_id());
+}
+
 static unsigned last_read_bank = 0xFFFF;
 static unsigned char window_pages[64][256];
 static unsigned long scan_run = 0;
@@ -103,8 +276,75 @@ static bool ring_skipped(unsigned long pc)
     }
 }
 
+static uint32 watched_address(void)
+{
+    static int resolved = 0;
+    static uint32 wanted = 0;
+    if (!resolved) {
+        resolved = 1;
+        const char *text = getenv("SFWATCH");
+        wanted = text ? (uint32)strtoul(text, NULL, 16) : 0;
+    }
+    return wanted;
+}
+
+#define RECLAIM_MAX 4096
+static unsigned reclaim_bank[RECLAIM_MAX];
+static unsigned reclaim_start[RECLAIM_MAX];
+static unsigned reclaim_end[RECLAIM_MAX];
+static int reclaim_count = -1;
+static unsigned long reclaim_hits = 0;
+static unsigned long reclaim_pc[64];
+static unsigned long reclaim_pc_hits[64];
+
+static void load_reclaim(void)
+{
+    reclaim_count = 0;
+    const char *path = getenv("SFRECLAIM");
+    if (!path) { return; }
+    FILE *in = fopen(path, "r");
+    if (!in) { return; }
+    unsigned b, s, e;
+    while (reclaim_count < RECLAIM_MAX && fscanf(in, "%x %x %x", &b, &s, &e) == 3) {
+        reclaim_bank[reclaim_count] = b;
+        reclaim_start[reclaim_count] = s;
+        reclaim_end[reclaim_count] = e;
+        reclaim_count++;
+    }
+    fclose(in);
+    printf("RECLAIM spans=%d\n", reclaim_count);
+}
+
+static void note_reclaim_read(uint32 address)
+{
+    if (reclaim_count < 0) { load_reclaim(); }
+    if (reclaim_count == 0) { return; }
+    const unsigned bank = (address >> 16) & 0xFF;
+    if (bank < 0xC0) { return; }
+    const unsigned inside = address & 0xFFFF;
+    for (int i = 0; i < reclaim_count; i++) {
+        if (reclaim_bank[i] == bank && inside >= reclaim_start[i] && inside < reclaim_end[i]) {
+            reclaim_hits++;
+            const unsigned long pc = (unsigned long)Registers.PBPC;
+            for (int j = 0; j < 64; j++) {
+                if (reclaim_pc_hits[j] == 0 || reclaim_pc[j] == pc) {
+                    reclaim_pc[j] = pc; reclaim_pc_hits[j]++; return;
+                }
+            }
+            return;
+        }
+    }
+}
+
 extern "C" void sf_note_read(uint32 address)
 {
+    note_reclaim_read(address);
+    note_vline(address);
+    const uint32 wanted = watched_address();
+    if (wanted && address == wanted) {
+        printf("WATCH frame=%u addr=%06X pc=%06lX\n", frames_seen, (unsigned)address,
+               (unsigned long)Registers.PBPC);
+    }
     if (getenv("SFREADRING") && !ring_skipped((unsigned long)Registers.PBPC)) {
         const unsigned long slot = ring_next++ % WRITE_RING;
         ring_pc[slot] = (unsigned long)Registers.PBPC;
@@ -143,8 +383,28 @@ extern "C" void sf_note_read(uint32 address)
 
 extern unsigned char sf_wram_touched[0x20000];
 
+static void note_vram_dma(uint32 address)
+{
+    if ((address & 0xFFFF) != 0x420B || !getenv("SFVRAMDMA")) {
+        return;
+    }
+    for (int i = 0; i < 8; i++) {
+        const SDMA *d = &DMA[i];
+        if (d->BAddress != 0x18 && d->BAddress != 0x19) {
+            continue;
+        }
+        printf("VDMA frame=%u ch=%d vram=%04X src=%02X:%04X n=%u fixed=%d pc=%06lX\n",
+               frames_seen, i, (unsigned)PPU.VMA.Address,
+               (unsigned)d->ABank, (unsigned)d->AAddress,
+               (unsigned)d->TransferBytes, (int)d->AAddressFixed,
+               (unsigned long)Registers.PBPC);
+    }
+}
+
 extern "C" void sf_note_write(uint32 address)
 {
+    note_vram_dma(address);
+    note_poke_word(address);
     if (getenv("SFRING") && ((((unsigned long)Registers.PBPC >> 16) & 0xFF) == 0xC7
                             || (address & 0xFFFC) == 0x2140)) {
         const unsigned long slot = ring_next++ % WRITE_RING;
@@ -158,6 +418,21 @@ extern "C" void sf_note_write(uint32 address)
         sf_wram_touched[((written - 0x7E) << 16) | (address & 0xFFFF)] = 1;
     } else if (address < 0x2000) {
         sf_wram_touched[address & 0x1FFF] = 1;
+    }
+    note_vline(address);
+    if (getenv("SFTABLE")) {
+        const unsigned bank = (address >> 16) & 0xFF;
+        const uint32 inside = address & 0xFFFF;
+        if ((bank == 0x7E || address < 0x2000 || bank == 0x00)
+            && inside >= PREFIGHT_TABLE_FIRST && inside < PREFIGHT_TABLE_LAST) {
+            if (prefight_writes == 0) { prefight_first_frame = frames_seen; }
+            prefight_last_frame = frames_seen;
+            prefight_writes++;
+        }
+    }
+    if (address == SOUND_GROUP_INDEX && ((((unsigned long)Registers.PBPC >> 16) & 0xFF) == 0xC7)
+        && getenv("SFGROUP")) {
+        report_group_walk();
     }
     if ((address & 0xFFFC) != 0x2140) {
         return;
@@ -220,12 +495,6 @@ extern "C" void sf_note_write(uint32 address)
     }
 }
 
-static const int SNES_BANKS = 256;
-static const int BLOCKS_PER_BANK = 16;
-static const int BLOCKS_PER_HALF = 8;
-static const size_t HALF_BANK = 0x8000;
-static const int WRAM_BANK_FIRST = 0x7E;
-static const int WRAM_BANK_LAST = 0x7F;
 
 static std::vector<uint16_t> frame;
 static unsigned frame_width = 0;
@@ -255,6 +524,7 @@ static bool left_pressed = false;
 static bool right_pressed = false;
 static bool down_pressed = false;
 static bool up_pressed = false;
+static int attack_button = -1;
 static unsigned char char_seen[256];
 static unsigned char variant_seen[256];
 
@@ -281,6 +551,9 @@ static int16_t cb_input_state(unsigned port, unsigned, unsigned, unsigned id)
     if (up_pressed && id == RETRO_DEVICE_ID_JOYPAD_UP) {
         return 1;
     }
+    if (attack_button >= 0 && (int)id == attack_button) {
+        return 1;
+    }
     return 0;
 }
 
@@ -304,81 +577,6 @@ static bool cb_environment(unsigned cmd, void *data)
         return true;
     default:
         return false;
-    }
-}
-
-static bool bank_exposes_only_its_high_half(int bank)
-{
-    return bank < 0x40 || (bank >= 0x80 && bank < 0xC0);
-}
-
-static bool bank_is_wram(int bank)
-{
-    return bank == WRAM_BANK_FIRST || bank == WRAM_BANK_LAST;
-}
-
-static uint8 *interleaved_low_half(int image_bank, int image_banks)
-{
-    return Memory.ROM + (size_t)(image_bank + image_banks) * HALF_BANK;
-}
-
-static uint8 *interleaved_high_half(int image_bank)
-{
-    return Memory.ROM + (size_t)image_bank * HALF_BANK - HALF_BANK;
-}
-
-static const int WINDOW_FIRST_BANK = 0xC0;
-static const int WINDOW_LOW_SOURCE_BANK = 0x80;
-static const int WINDOW_HIGH_SOURCE_BANK = 0x00;
-
-static void install_game_doctor_map(int mirror_shift)
-{
-    const int image_banks = (int)(Memory.CalculatedSize >> 16);
-    if (image_banks <= 0) {
-        return;
-    }
-
-    for (int bank = 0; bank < SNES_BANKS; bank++) {
-        if (bank_is_wram(bank)) {
-            continue;
-        }
-
-        uint8 *low = NULL;
-        uint8 *high = NULL;
-
-        if (mirror_shift == -3 && bank >= 0x60 && bank <= 0x7D) {
-            const int n = bank - 0x60;
-            low = Memory.ROM + (size_t)(2 * n) * HALF_BANK;
-            high = Memory.ROM + (size_t)(2 * n + 1) * HALF_BANK - HALF_BANK;
-        } else if (mirror_shift < 0 && bank >= WINDOW_FIRST_BANK) {
-            const int offset = bank - WINDOW_FIRST_BANK;
-            const int low_bank = WINDOW_LOW_SOURCE_BANK + offset;
-            const int high_bank = WINDOW_HIGH_SOURCE_BANK + offset;
-            if (low_bank >= image_banks || high_bank >= image_banks) {
-                continue;
-            }
-            low = interleaved_low_half(low_bank, image_banks);
-            high = interleaved_low_half(high_bank, image_banks) - HALF_BANK;
-        } else {
-            const int image_bank =
-                bank < image_banks ? bank : bank - (mirror_shift < 0 ? 0 : mirror_shift);
-            if (image_bank < 0 || image_bank >= image_banks) {
-                continue;
-            }
-            low = interleaved_low_half(image_bank, image_banks);
-            high = interleaved_high_half(image_bank);
-        }
-
-        for (int block = 0; block < BLOCKS_PER_BANK; block++) {
-            const bool in_low_half = block < BLOCKS_PER_HALF;
-            if (in_low_half && bank_exposes_only_its_high_half(bank)) {
-                continue;
-            }
-            const int slot = (bank << 4) | block;
-            Memory.Map[slot] = in_low_half ? low : high;
-            Memory.BlockIsROM[slot] = TRUE;
-            Memory.BlockIsRAM[slot] = FALSE;
-        }
     }
 }
 
@@ -507,8 +705,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    const bool use_game_doctor_map = mirror_shift != -1;
-    if (use_game_doctor_map) {
+    const bool use_windowed_lorom_map = mirror_shift != -1;
+    if (use_windowed_lorom_map) {
         if (Memory.ROM && Memory.MAX_ROM_SIZE >= rom.size()) {
             memcpy(Memory.ROM, rom.data(), rom.size());
         }
@@ -517,9 +715,9 @@ int main(int argc, char **argv)
             Settings.SDD1 = FALSE;
         }
 
-        install_game_doctor_map(mirror_shift);
+        install_windowed_lorom_map(mirror_shift);
         S9xReset();
-        install_game_doctor_map(mirror_shift);
+        install_windowed_lorom_map(mirror_shift);
     }
 
     report_probes();
@@ -540,7 +738,10 @@ int main(int argc, char **argv)
     for (int i = 0; i < frames_to_run; i++) {
         start_pressed = (i % 240) >= 200;
         confirm_pressed = (i % 180) >= 150;
-        if (getenv("SFGRID")) {
+        if (getenv("SFIDLE")) {
+            start_pressed = confirm_pressed = false;
+            left_pressed = right_pressed = up_pressed = down_pressed = false;
+        } else if (getenv("SFGRID")) {
             const int settle = getenv("SFSETTLE") ? atoi(getenv("SFSETTLE")) : 90;
             const int step = i / settle;
             start_pressed = (i % 300) >= 260;
@@ -561,8 +762,8 @@ int main(int argc, char **argv)
             if (slot == 0 && i > 0) {
                 S9xReset();
                 blk_pending = false;
-                if (use_game_doctor_map) {
-                    install_game_doctor_map(mirror_shift);
+                if (use_windowed_lorom_map) {
+                    install_windowed_lorom_map(mirror_shift);
                 }
                 printf("TOUR character=%d frame=%d\n", target, i);
                 fflush(stdout);
@@ -594,8 +795,44 @@ int main(int argc, char **argv)
                 confirm_pressed = ((slot - (budget - 1500)) % 50) < 10;
                 start_pressed = ((slot - (budget - 1500)) % 90) < 10;
             }
+        } else if (getenv("SFSCENE")) {
+            const char *wanted = getenv("SFSCENE");
+            const unsigned long first = strtoul(wanted, NULL, 16);
+            const char *comma = strchr(wanted, ',');
+            const unsigned long second = comma ? strtoul(comma + 1, NULL, 16) : first;
+            Memory.RAM[PLAYER_ONE_CHARACTER] = (uint8)first;
+            Memory.RAM[PLAYER_TWO_CHARACTER] = (uint8)second;
+            if (getenv("SFSCENEVARIANT")) {
+                const unsigned long variant = strtoul(getenv("SFSCENEVARIANT"), NULL, 16);
+                Memory.RAM[PLAYER_ONE_VARIANT] = (uint8)variant;
+            }
+            const int menu = getenv("SFSCENEMENU") ? atoi(getenv("SFSCENEMENU")) : 1800;
+            start_pressed = i < menu && (i % 60) < 8;
+            confirm_pressed = i < menu && (i % 40) < 12;
+            left_pressed = right_pressed = down_pressed = up_pressed = false;
+            attack_button = -1;
+            if (i >= menu && getenv("SFSCENECONTINUE")) {
+                const int every =
+                    getenv("SFSCENECONTINUE")[0] ? atoi(getenv("SFSCENECONTINUE")) : 0;
+                const int period = every > 0 ? every : 240;
+                start_pressed = (i % period) < 8;
+                confirm_pressed = (i % period) >= 40 && (i % period) < 48;
+            }
+            if (i >= menu && getenv("SFSCENEJUMP")) {
+                static const int attacks[] = {
+                    RETRO_DEVICE_ID_JOYPAD_Y, RETRO_DEVICE_ID_JOYPAD_X,
+                    RETRO_DEVICE_ID_JOYPAD_L, RETRO_DEVICE_ID_JOYPAD_B,
+                    RETRO_DEVICE_ID_JOYPAD_A, RETRO_DEVICE_ID_JOYPAD_R,
+                };
+                const int cycle = (i - menu) / 90;
+                const int step = (i - menu) % 90;
+                up_pressed = step < 12;
+                if (step >= 26 && step < 34) {
+                    attack_button = attacks[cycle % 6];
+                }
+            }
         } else if (getenv("SFFORCE")) {
-            Memory.RAM[0x07A2] = 0x02;
+            Memory.RAM[PLAYER_ONE_CHARACTER] = 0x02;
             start_pressed = true;
             confirm_pressed = (i % 40) < 12;
             left_pressed = right_pressed = down_pressed = up_pressed = false;
@@ -620,6 +857,7 @@ int main(int argc, char **argv)
             char_seen[Memory.RAM[0x07A2]] = 1;
             variant_seen[Memory.RAM[0x1C20]] = 1;
         }
+        apply_forced_writes();
         apu_writes_this_frame = 0;
         retro_run();
         if (getenv("SFPC")) {
@@ -641,7 +879,8 @@ int main(int argc, char **argv)
         }
         const int bright_every = getenv("SFBRIGHT") ? atoi(getenv("SFBRIGHT")) : 0;
         if (bright_every > 0 && (i % bright_every) == bright_every - 1) {
-            printf("BRIGHT frame=%d value=%.1f\n", i, frame_brightness());
+            printf("BRIGHT frame=%d value=%.1f char=%02X\n", i, frame_brightness(),
+                   (unsigned)Memory.RAM[PLAYER_ONE_CHARACTER]);
         }
         if (getenv("SFPORTRAIT")) {
             const unsigned id = Memory.RAM[0x07A2];
@@ -786,6 +1025,12 @@ int main(int argc, char **argv)
             printf("APUPC pc=%06lX writes=%lu\n", apu_writer_pc[i], apu_writer_hits[i]);
         }
     }
+    if (getenv("SFRECLAIM")) {
+        printf("RECLAIMREAD hits=%lu\n", reclaim_hits);
+        for (int i = 0; i < 64 && reclaim_pc_hits[i]; i++) {
+            printf("RECLAIMPC pc=%06lX reads=%lu\n", reclaim_pc[i], reclaim_pc_hits[i]);
+        }
+    }
     if (getenv("SFWRAMMAP")) {
         unsigned run_start = 0, best_start = 0, best_len = 0, len = 0;
         for (unsigned address = 0; address <= 0x20000; address++) {
@@ -819,6 +1064,20 @@ int main(int argc, char **argv)
     if (getenv("SFWRAM")) {
         FILE *out = fopen(getenv("SFWRAM"), "wb");
         if (out) { fwrite(Memory.RAM, 1, 0x20000, out); fclose(out); }
+    }
+    if (getenv("SFVLINE") && vline_samples) {
+        printf("VLINE samples=%lu mean=%.1f low=%u high=%u\n", vline_samples,
+               (double)vline_total / (double)vline_samples, vline_low, vline_high);
+        for (int slot = 0; slot < 16; slot++) {
+            if (vline_histogram[slot]) {
+                printf("VLINEBIN %3d-%3d %lu\n", slot * 16, slot * 16 + 15, vline_histogram[slot]);
+            }
+        }
+    }
+    if (getenv("SFTABLE")) {
+        printf("TABLE writes=%lu first=%u last=%u busy=%u bursts=%u\n", prefight_writes,
+               prefight_first_frame, prefight_last_frame, prefight_busy_frames,
+               prefight_bursts);
     }
     printf("CPU pbpc=%06X sdd1=%d\n", (unsigned)Registers.PBPC, (int)Settings.SDD1);
     printf("RESULT load=ok frames=%u size=%ux%u lit=%lu rows=%lu banks=%u\n",
