@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import random
 import unittest
 from pathlib import Path
@@ -26,6 +27,9 @@ def reverse7(value):
 def synthetic(header, size=4096, seed=1):
     rng = random.Random(seed)
     return bytes([header]) + bytes(rng.randrange(256) for _ in range(size))
+
+
+READ_AHEAD_PADDING = 64
 
 
 class TableTest(unittest.TestCase):
@@ -102,6 +106,36 @@ class OutputTest(unittest.TestCase):
 
         self.assertGreater(stream.end, 2)
         self.assertLessEqual(stream.end, len(rom))
+
+
+class VendorStreamTest(unittest.TestCase):
+    def pairs(self):
+        named = os.environ.get("SFA2_VENDOR_STREAMS")
+        if not named:
+            raise unittest.SkipTest("set SFA2_VENDOR_STREAMS to a folder of .sdd1 and .raw pairs")
+        folder = Path(named)
+        if not folder.is_dir():
+            raise unittest.SkipTest(f"{folder} is not a folder")
+        found = [
+            (packed, packed.with_suffix(".raw"))
+            for packed in sorted(folder.rglob("*.sdd1"))
+            if packed.with_suffix(".raw").exists()
+        ]
+        if not found:
+            raise unittest.SkipTest(f"no .sdd1 and .raw pairs under {folder}")
+        return found
+
+    def test_every_vendor_pair_decompresses_to_its_own_raw_file(self):
+        for packed, raw in self.pairs():
+            want = raw.read_bytes()
+            padded = packed.read_bytes() + bytes(READ_AHEAD_PADDING)
+
+            got = sdd1.decompress(padded, 0, len(want)).data
+
+            self.assertEqual(got, want, packed.name)
+
+    def test_the_pairs_cover_more_than_one_stream(self):
+        self.assertGreater(len(self.pairs()), 1)
 
 
 class BoundsTest(unittest.TestCase):

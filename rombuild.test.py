@@ -238,5 +238,42 @@ class ImageTest(unittest.TestCase):
             self.assertEqual(destination, self.result.destinations[entry.index])
 
 
+class ReservationTest(unittest.TestCase):
+    def test_a_reserved_span_is_removed_from_its_bank(self):
+        regions = [rombuild.Region(0x5F, 0x0000, 0x10000)]
+        taken = rombuild.spans_of([(0x5F0000, b"x" * 0x100)])
+
+        left = rombuild.subtract(regions, taken)
+
+        self.assertEqual(left, [rombuild.Region(0x5F, 0x0100, 0x10000)])
+
+    def test_a_reservation_in_the_middle_leaves_two_pieces(self):
+        regions = [rombuild.Region(0x5F, 0x0000, 0x1000)]
+        taken = rombuild.spans_of([(0x5F0400, b"x" * 0x100)])
+
+        left = rombuild.subtract(regions, taken)
+
+        self.assertEqual(
+            left, [rombuild.Region(0x5F, 0x0000, 0x0400), rombuild.Region(0x5F, 0x0500, 0x1000)]
+        )
+
+    def test_a_reservation_leaves_other_banks_alone(self):
+        regions = [rombuild.Region(0x41, 0x0000, 0x10000)]
+        taken = rombuild.spans_of([(0x5F0000, b"x" * 0x100)])
+
+        self.assertEqual(rombuild.subtract(regions, taken), regions)
+
+    def test_a_reservation_covering_a_whole_region_removes_it(self):
+        regions = [rombuild.Region(0x5F, 0x0000, 0x0100)]
+        taken = rombuild.spans_of([(0x5F0000, b"x" * 0x100)])
+
+        self.assertEqual(rombuild.subtract(regions, taken), [])
+
+    def test_a_span_names_the_bank_and_length_of_its_payload(self):
+        spans = rombuild.spans_of([(0x5F0000, b"x" * 0x6080)])
+
+        self.assertEqual(spans, [rombuild.Region(0x5F, 0x0000, 0x6080)])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -61,6 +61,34 @@ def data_bank_regions():
     ]
 
 
+def spans_of(extra):
+    return [
+        Region(address >> 16, address & 0xFFFF, (address & 0xFFFF) + len(data))
+        for address, data in extra
+    ]
+
+
+def subtract(regions, taken):
+    out = []
+    for region in regions:
+        pieces = [(region.start, region.end)]
+        for hole in taken:
+            if hole.bank != region.bank:
+                continue
+            nxt = []
+            for start, end in pieces:
+                if hole.end <= start or hole.start >= end:
+                    nxt.append((start, end))
+                    continue
+                if start < hole.start:
+                    nxt.append((start, hole.start))
+                if hole.end < end:
+                    nxt.append((hole.end, end))
+            pieces = nxt
+        out.extend(Region(region.bank, start, end) for start, end in pieces if end > start)
+    return out
+
+
 def reclaimed_regions(rom, entries):
     spans = []
     for entry in entries:
@@ -128,11 +156,11 @@ def place(image, bank, addr, data, banks):
             bank += 1
 
 
-def build(rom, entries, image_banks=IMAGE_BANKS):
+def build(rom, entries, image_banks=IMAGE_BANKS, extra=()):
     if len(rom) != ORIGINAL_SIZE:
         raise ValueError(f"expected a {ORIGINAL_SIZE} byte rom, got {len(rom)}")
 
-    regions = data_bank_regions() + reclaimed_regions(rom, entries)
+    regions = subtract(data_bank_regions(), spans_of(extra)) + reclaimed_regions(rom, entries)
     ordered = entries[-1:] + entries[:-1] if len(entries) > 1 else list(entries)
     destinations = allocate([(e.index, e.length) for e in ordered], regions)
     tables = sdd1tables.build([(e, destinations[e.index]) for e in entries])
@@ -166,6 +194,9 @@ def build(rom, entries, image_banks=IMAGE_BANKS):
             sdd1.decompress(rom, entry.source, entry.length).data,
             image_banks,
         )
+
+    for address, data in extra:
+        place(image, address >> 16, address & 0xFFFF, data, image_banks)
 
     return Result(bytes(image), destinations, tables, regions)
 

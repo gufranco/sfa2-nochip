@@ -17,6 +17,7 @@ sdd1 = _load("sdd1")
 sdd1tables = _load("sdd1tables")
 romtools = _load("romtools")
 jpstreams = _load("jpstreams")
+usastreams = _load("usastreams")
 
 WINDOW_BASE = 0xC0
 SCAN_BUDGET = 64
@@ -36,6 +37,15 @@ RECOVERED_JP = (
     0x192B62,
     0x15D7FD,
 )
+
+
+def table_for(path):
+    name = Path(path).name.lower()
+    if "sfz2" in name or name.startswith("jp-"):
+        return jpstreams.STREAMS
+    if "sfa2" in name or name.startswith("usa-"):
+        return usastreams.STREAMS
+    raise ValueError(f"cannot tell which region {name} belongs to")
 
 
 def load(table=None):
@@ -81,7 +91,7 @@ def scan_cost(entries):
 
 def report(rom_path):
     rom = romtools.load(Path(rom_path))
-    entries = load()
+    entries = load(table_for(rom_path))
 
     repeated = duplicate_sources(entries)
     broken = undecodable(rom, entries)

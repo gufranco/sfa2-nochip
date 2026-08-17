@@ -20,6 +20,9 @@ rombuild = _load("rombuild")
 header = _load("header")
 spcfast = _load("spcfast")
 shinakuma = _load("shinakuma")
+gamefixes = _load("gamefixes")
+repeatload = _load("repeatload")
+prefight = _load("prefight")
 jpstreams = _load("jpstreams")
 usastreams = _load("usastreams")
 version = _load("version")
@@ -83,9 +86,10 @@ def assemble_bypass(region, cart, workdir):
 
 def build(region, workdir):
     retail = romtools.load(REGIONS[region].retail)
-    cart = shinakuma.apply(spcfast.apply(retail))
-    bypass = assemble_bypass(region, cart, workdir)
-    image = rombuild.build(bypass, entries_for(region)).image
+    cart = repeatload.apply(gamefixes.apply(shinakuma.apply(spcfast.apply(retail))))
+    bypass = prefight.apply(assemble_bypass(region, cart, workdir))
+    extra = ((prefight.TABLE_ADDRESS, prefight.table()),)
+    image = rombuild.build(bypass, entries_for(region), extra=extra).image
     return header.declare_no_coprocessor(image)
 
 

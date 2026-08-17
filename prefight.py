@@ -1,0 +1,138 @@
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+TABLE_ADDRESS = 0x5F0000
+TABLE_SIZE = 0xC1 * 0x40 * 2
+TABLE_DESTINATION = 0x9440
+
+TABLE_START = 0x004B7A00
+TABLE_STEP = 0x00011820
+TABLE_ROWS = 0xC1
+TABLE_COLUMNS = 0x40
+TABLE_START_STRIDE = 0x8C10
+TABLE_STEP_STRIDE = 0x02EB
+
+BUILDER_SIGNATURE = bytes.fromhex(
+    "08c230a20000a9007a8510a94b008512a92018 8514a90100 8516".replace(" ", "")
+)
+
+FILLER_FILE = 0x07F593
+FILLER_END = 0x07F600
+FILLER_SIZE = FILLER_END - FILLER_FILE
+ROUTINE_ADDRESS = 0xC00000 + FILLER_FILE
+
+ROUTINE = bytes.fromhex(
+    "0878c230a940948f812100e220a9008f8321008f004300a9808f014300a95f8f044300"
+    "c220a900008f024300a980608f054300e220a9018f0b420028 6b".replace(" ", "")
+)
+
+JSL = 0x22
+WINDOW_FIRST_BANK = 0xC0
+
+
+def table():
+    out = bytearray()
+    start = TABLE_START
+    step = TABLE_STEP
+    for _ in range(TABLE_ROWS):
+        value = start
+        for _ in range(TABLE_COLUMNS):
+            out += ((value >> 16) & 0xFFFF).to_bytes(2, "little")
+            value = (value - step) & 0xFFFFFFFF
+        start = (start + TABLE_START_STRIDE) & 0xFFFFFFFF
+        step = (step - TABLE_STEP_STRIDE) & 0xFFFFFFFF
+    return bytes(out)
+
+
+def routine():
+    return ROUTINE
+
+
+def find_builder(rom):
+    at = rom.find(BUILDER_SIGNATURE)
+    if at == -1:
+        return None
+    if rom.find(BUILDER_SIGNATURE, at + 1) != -1:
+        raise ValueError("the pre-fight table builder appears more than once")
+    return at
+
+
+def call_to(address):
+    return bytes([JSL, address & 0xFF, (address >> 8) & 0xFF, (address >> 16) & 0xFF])
+
+
+def find_callers(rom, at=None):
+    at = find_builder(rom) if at is None else at
+    if at is None:
+        return []
+    window = WINDOW_FIRST_BANK + (at >> 16)
+    wanted = call_to((window << 16) | (at & 0xFFFF))
+    found, position = [], rom.find(wanted)
+    while position != -1:
+        found.append(position)
+        position = rom.find(wanted, position + 1)
+    return found
+
+
+def is_patched(rom):
+    if rom[FILLER_FILE : FILLER_FILE + len(ROUTINE)] != ROUTINE:
+        return False
+    return not find_callers(rom)
+
+
+def apply(rom):
+    if is_patched(rom):
+        return bytes(rom)
+
+    at = find_builder(rom)
+    if at is None:
+        raise ValueError("no pre-fight table builder found")
+    callers = find_callers(rom, at)
+    if not callers:
+        raise ValueError("the builder is never called, so there is nothing to redirect")
+    if set(rom[FILLER_FILE:FILLER_END]) != {0xFF}:
+        raise ValueError("the filler the routine needs is not free")
+
+    patched = bytearray(rom)
+    patched[FILLER_FILE : FILLER_FILE + len(ROUTINE)] = ROUTINE
+    redirect = call_to(ROUTINE_ADDRESS)
+    for site in callers:
+        patched[site : site + len(redirect)] = redirect
+    return bytes(patched)
+
+
+def report(rom):
+    at = find_builder(rom)
+    if at is None:
+        print("  no pre-fight table builder in this ROM")
+        return
+    print(f"  builder   ${WINDOW_FIRST_BANK + (at >> 16):02X}:{at & 0xFFFF:04X}  file ${at:06X}")
+    for site in find_callers(rom, at):
+        print(f"  caller    ${WINDOW_FIRST_BANK + (site >> 16):02X}:{site & 0xFFFF:04X}")
+    print(f"  routine   ${ROUTINE_ADDRESS:06X}  {len(ROUTINE)} bytes")
+    print(
+        f"  table     ${TABLE_ADDRESS:06X}  {TABLE_SIZE:,} bytes to work RAM ${TABLE_DESTINATION:04X}"
+    )
+
+
+def main(argv):
+    if len(argv) != 3:
+        print("usage: prefight.py <source-rom> <output-rom>", file=sys.stderr)
+        return 2
+
+    source, output = Path(argv[1]), Path(argv[2])
+    if source.resolve() == output.resolve():
+        print("refusing to patch the source ROM in place", file=sys.stderr)
+        return 1
+
+    rom = source.read_bytes()
+    report(rom)
+    output.write_bytes(apply(rom))
+    print(f"[done] {output} ({output.stat().st_size:,} bytes)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
