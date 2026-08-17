@@ -45,7 +45,7 @@ class CompareTest(unittest.TestCase):
         self.assertEqual(differing, [])
 
     def test_a_changed_frame_is_reported(self):
-        shared, differing = stage_diff.compare({0: "a", 1: "b"}, {0: "a", 1: "z"})
+        _, differing = stage_diff.compare({0: "a", 1: "b"}, {0: "a", 1: "z"})
 
         self.assertEqual(differing, [1])
 
@@ -59,7 +59,7 @@ class CompareTest(unittest.TestCase):
         before = {5: "a", 1: "a", 3: "a"}
         after = {5: "z", 1: "z", 3: "z"}
 
-        shared, differing = stage_diff.compare(before, after)
+        _, differing = stage_diff.compare(before, after)
 
         self.assertEqual(differing, [1, 3, 5])
 

@@ -123,7 +123,7 @@ class ApplyTest(unittest.TestCase):
             range(repeatload.FILLER_FILE, repeatload.FILLER_FILE + len(repeatload.ROUTINE))
         )
         allowed.update(range(spcfast.CHECKSUM_FIELD, spcfast.CHECKSUM_FIELD + 4))
-        moved = {at for at, (a, b) in enumerate(zip(rom, patched)) if a != b}
+        moved = {at for at, (a, b) in enumerate(zip(rom, patched, strict=True)) if a != b}
         self.assertTrue(moved <= allowed, sorted(moved - allowed)[:8])
 
     def test_it_does_not_collide_with_the_pre_fight_routine(self):

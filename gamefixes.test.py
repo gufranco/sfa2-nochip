@@ -200,7 +200,7 @@ class RetailTest(unittest.TestCase):
         field = range(spcfast.CHECKSUM_FIELD, spcfast.CHECKSUM_FIELD + 4)
         return sum(
             1
-            for at, (before, after) in enumerate(zip(rom, patched))
+            for at, (before, after) in enumerate(zip(rom, patched, strict=True))
             if before != after and at not in field
         )
 
@@ -364,7 +364,7 @@ class RetailTest(unittest.TestCase):
     def test_the_index_moves_with_the_pose_it_names(self):
         fix = next(f for f in gamefixes.FIXES if f.name == "akuma silent win pose index")
 
-        moved = [(a, b) for a, b in zip(fix.stock, fix.patched) if a != b]
+        moved = [(a, b) for a, b in zip(fix.stock, fix.patched, strict=True) if a != b]
 
         self.assertEqual(moved, [(0x01, 0x02)])
 
@@ -387,7 +387,9 @@ class RetailTest(unittest.TestCase):
     def test_the_object_table_fix_trades_a_store_for_a_decrement(self):
         fix = next(f for f in gamefixes.FIXES if f.name == "object table overflow")
 
-        moved = [(i, a, b) for i, (a, b) in enumerate(zip(fix.stock, fix.patched)) if a != b]
+        moved = [
+            (i, a, b) for i, (a, b) in enumerate(zip(fix.stock, fix.patched, strict=True)) if a != b
+        ]
 
         self.assertEqual(moved, [(5, 0x84, 0xD6), (6, 0x20, 0x87), (10, 0x05, 0x03)])
 

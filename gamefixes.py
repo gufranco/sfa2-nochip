@@ -295,7 +295,9 @@ def changed_bytes(rom):
     for fix in FIXES:
         if locate(rom, fix.stock) is None:
             continue
-        total += sum(1 for before, after in zip(fix.stock, fix.patched) if before != after)
+        total += sum(
+            1 for before, after in zip(fix.stock, fix.patched, strict=True) if before != after
+        )
     for call in EMPTY_CALLS:
         total += len(empty_call_sites(rom, call))
     return total

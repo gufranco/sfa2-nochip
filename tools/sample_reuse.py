@@ -107,8 +107,8 @@ def replay(runs):
                     continue
                 tags = [(block["bank"], (block["src"] + step) & 0xFFFF) for step in range(length)]
                 slots = [(block["dest"] + step) & 0xFFFF for step in range(length)]
-                same = all(provenance[slot] == tag for slot, tag in zip(slots, tags))
-                for slot, tag in zip(slots, tags):
+                same = all(provenance[slot] == tag for slot, tag in zip(slots, tags, strict=True))
+                for slot, tag in zip(slots, tags, strict=True):
                     provenance[slot] = tag
                 moved += length
                 span["bytes"] += length

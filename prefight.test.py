@@ -157,7 +157,7 @@ class ApplyTest(unittest.TestCase):
         for at in prefight.find_callers(rom):
             allowed.update(range(at, at + 4))
         allowed.update(range(prefight.FILLER_FILE, prefight.FILLER_FILE + len(prefight.routine())))
-        moved = {at for at, (a, b) in enumerate(zip(rom, patched)) if a != b}
+        moved = {at for at, (a, b) in enumerate(zip(rom, patched, strict=True)) if a != b}
         self.assertTrue(moved <= allowed, sorted(moved - allowed)[:8])
 
 
