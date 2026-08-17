@@ -1347,7 +1347,9 @@ property of the patch: the metric is the longest run of consecutive frames carry
 the two forms reach slightly different points under the same scripted input.
 
 Every build: **12,000 of 12,000 frames delivered**, zero dropped; **34 to 38 of 40 brightness samples
-lit**; three fight loads; **zero lookup misses** across all sixteen. Every sample block that reaches the
+lit**; three fight loads; **zero lookup misses** across all sixteen. Every image carrying the sound
+patch is also driven through all eighteen fighters in turn, resetting between them, and none of them
+stalls or loses a block: **50,285 uploads verified across the eight of them**. Every sample block that reaches the
 audio chip is compared against its ROM source and every one matches: **73 blocks on the Japanese build,
 153 on the USA build**. All eight chip-free images are exactly 12,582,912 bytes.
 
