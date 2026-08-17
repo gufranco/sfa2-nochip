@@ -39,19 +39,20 @@ is not: it is the first of two reasons no emulator can load these conversions to
 You supply the retail ROM. Nothing here contains game data.
 
 ```
-# 1. patch the retail cartridge: faster sample upload, then Shin Akuma
+# 1. patch the retail cartridge: faster sample upload, Shin Akuma, small corrections
 python3 spcfast.py   roms/sfa2-usa-final.sfc build/step1.sfc
 python3 shinakuma.py build/step1.sfc         build/step2.sfc
+python3 gamefixes.py build/step2.sfc         build/step3.sfc
 
 # 2. redirect the seven places that ask the chip to decompress
-python3 build.py asm/sdd1-bypass.asm build/step2.sfc bypass.sfc
+python3 build.py asm/sdd1-bypass.asm build/step3.sfc bypass.sfc
 
 # 3. and 4. decompress every stream, lay out the 96 Mbit image, declare it honestly
 python3 pack.py usa
 ```
 
 Steps 1 and 2 alone give a patched retail cartridge that still needs the chip but loses the pause. All
-four give the chip-free 96 Mbit image. Order matters, and section 21 explains why.
+four give the chip-free 96 Mbit image. Order matters, and section 23 explains why.
 
 For Street Fighter Zero 2, `python3 pack.py jp`. Both regions build from the retail cartridge alone:
 the stream tables are frozen into [`usastreams.py`](usastreams.py) and [`jpstreams.py`](jpstreams.py).
@@ -59,7 +60,7 @@ the stream tables are frozen into [`usastreams.py`](usastreams.py) and [`jpstrea
 **Status:** the builds run on real hardware, the 96 Mbit chip-free image on a Game Doctor SF7 with
 128 Mbit of DRAM, and both that image and the 4 MB patched cartridge on an FXPAK Pro. Section 17 is the
 record of what has been put on which machine. The one thing no test can settle is whether the Japanese
-stream table is complete, because a stream nobody asks for cannot be found; section 18 explains why and
+stream table is complete, because a stream nobody asks for cannot be found; section 20 explains why and
 what to do if a screen ever comes up wrong.
 
 ---
@@ -73,23 +74,25 @@ what to do if a screen ever comes up wrong.
 5. [The decompressor](#5-the-decompressor)
 6. [What Star Ocean taught me](#6-what-star-ocean-taught-me)
 7. [Finding the streams](#7-finding-the-streams)
-8. [The Game Doctor image format](#8-the-game-doctor-image-format)
+8. [Windowed LoROM](#8-windowed-lorom)
 9. [Rebuilding the ROM](#9-rebuilding-the-rom)
 10. [The bypass patch](#10-the-bypass-patch)
 11. [Making it boot](#11-making-it-boot)
 12. [Emulator work](#12-emulator-work)
 13. [The pre-fight pause](#13-the-pre-fight-pause)
 14. [Shin Akuma](#14-shin-akuma)
-15. [The Japanese build that never worked](#15-the-japanese-build-that-never-worked)
-16. [Declaring the cartridge honestly](#16-declaring-the-cartridge-honestly)
-17. [Validation](#17-validation)
-18. [The one thing no test settles](#18-the-one-thing-no-test-settles)
-19. [Lessons](#19-lessons)
-20. [Upstream contributions](#20-upstream-contributions)
-21. [Reproducing this](#21-reproducing-this)
-22. [Repository guide](#22-repository-guide)
-23. [Acknowledgements](#23-acknowledgements)
-24. [References](#24-references)
+15. [Small corrections](#15-small-corrections)
+16. [The pre-fight table, moved out of the processor](#16-the-pre-fight-table-moved-out-of-the-processor)
+17. [The Japanese build that never worked](#17-the-japanese-build-that-never-worked)
+18. [Declaring the cartridge honestly](#18-declaring-the-cartridge-honestly)
+19. [Validation](#19-validation)
+20. [The one thing no test settles](#20-the-one-thing-no-test-settles)
+21. [Lessons](#21-lessons)
+22. [Upstream contributions](#22-upstream-contributions)
+23. [Reproducing this](#23-reproducing-this)
+24. [Repository guide](#24-repository-guide)
+25. [Acknowledgements](#25-acknowledgements)
+26. [References](#26-references)
 
 ---
 
@@ -115,7 +118,7 @@ whole thing concrete rather than academic.
 Then it sat. I would pick it up, get somewhere, hit something I could not explain, and put it down
 again. The decompressor came early and was easy, because the algorithm is documented. Everything after
 that was addressing, and addressing is not documented anywhere. The Japanese build in particular was
-quietly broken for most of those five years and I did not know it, which is section 15.
+quietly broken for most of those five years and I did not know it, which is section 17.
 
 ---
 
@@ -163,7 +166,7 @@ The first is that I do not believe anything I have not measured. Every number in
 command behind it. When a measurement contradicted something I already believed, the belief lost, and
 several of those reversals are written up here including the ones that make me look slow.
 
-Analysis lives in Python with tests next to each module, 19 of them and 281 tests. That is not
+Analysis lives in Python with tests next to each module, 32 of them and 478 tests. That is not
 ceremony. More than once a failing test was the first sign an assumption had rotted, and twice the test
 turned out to be wrong rather than the code, which I have left in the record because it is the more
 useful failure of the two.
@@ -277,6 +280,14 @@ stream actually consumes, and 108 padded to a bank boundary, which accounts for 
 
 The third is Star Ocean, which is the next section.
 
+A fourth arrived late and from an unrelated direction. gizaha's patch source ships twenty pairs of
+compressed and decompressed files, his own working data for the streams he replaced. Run through
+[`sdd1.py`](sdd1.py) every one of the twenty reproduces its `.raw` file exactly. That is worth more
+than its size suggests: the reference test shares snes9x's tables with this decompressor by
+construction, and Star Ocean shares the game engine, while these came out of somebody else's toolchain
+entirely. `sdd1.test.py` runs them when `SFA2_VENDOR_STREAMS` names the folder and skips cleanly
+otherwise, since the files are game data and none of it lives here.
+
 ---
 
 ## 6. What Star Ocean taught me
@@ -286,7 +297,9 @@ the chip. I used it twice: as ground truth for my decompressor, and, far more im
 source of the addressing rule this entire project rests on.
 
 It is the only other cartridge with an S-DD1 in it. At 48 Mbit it becomes 96 Mbit once the graphics
-come out compressed, and a chip-free conversion of it has been circulating for years.
+come out compressed, and a chip-free conversion of it has been circulating for years: neviksti's
+*Star Ocean no S-DD1/96Mbit hack*, made so the game could run on a copier or a flash cartridge with no
+chip in it. That is the same problem this project has, twenty years earlier and on the other S-DD1 game.
 
 I treated that conversion as more than a curiosity. It is somebody else's finished answer to my exact
 problem, and I got two things out of taking it apart.
@@ -300,7 +313,8 @@ expected output came from an implementation that has nothing to do with mine.
 
 ### It showed me how a 96 Mbit image is addressed
 
-This is the part that unlocked everything.
+This is the part that unlocked everything. The rule it gave me is the windowed LoROM map that section 8
+names and defines.
 
 A 4 MB LoROM cartridge maps cleanly, 32 KB per bank at `$8000`-`$FFFF`. A 12 MB image cannot, because
 there are not enough banks to go round. Star Ocean's conversion solves it with a rule I could not find
@@ -368,15 +382,21 @@ run of zeroes by looking at its content.
 A file I had sitting around as `sfa2-usa-vc-sound-restored.sfc` turned out to be DarkAkuma's patched
 ROM for the SNES Classic, and it carries `SDD1` marker tags at every stream so that the SNES Classic's
 own decompressor can find them. [`sdd1map.py`](sdd1map.py) just reads them: **2,815 streams, 4,947,202
-bytes decompressed**. Complete, authoritative, no guessing. I did not earn that one.
+bytes decompressed**. No guessing, and I did not earn that one.
+
+I wrote "complete, authoritative" here and left it standing for months. It is neither, and section 22 is
+what it cost. A tagged dump is a static artefact: it can only name the streams its tagging captured, and
+two that the running game asks for are not in it. The table now holds **2,817**, the 2,815 tagged ones
+plus two recovered by watching the chip. The irony is the one worth keeping: the Japanese map, recovered
+the hard way by driving the game, is the one that turned out to be provably complete.
 
 ### The Japanese map, the hard way
 
 Nothing equivalent exists for Zero 2. The map I used for years was recovered heuristically and had
 **2,801 streams** in it. It was wrong the whole time. Section 15 is how I found out.
 
-The table, [`jpstreams.py`](jpstreams.py), holds **2,855 streams**, against 2,815 in the tagged USA
-dump. The count moved eleven times before it settled, and every move came from reaching a screen nobody
+The table, [`jpstreams.py`](jpstreams.py), holds **2,855 streams**, against 2,817 in the USA one.
+ The count moved eleven times before it settled, and every move came from reaching a screen nobody
 had reached before. The rest of this section is that story, including a theory of mine that was wrong
 and did real damage.
 [`mapcheck.py`](mapcheck.py) validates any map offline: no duplicate sources, every stream decodes, and
@@ -384,10 +404,55 @@ the worst key-scan distance stays inside budget.
 
 ---
 
-## 8. The Game Doctor image format
+## 8. Windowed LoROM
 
-**TL;DR.** The flash cartridge expects the file split into two interleaved halves. It was derived from
-Star Ocean's conversion and confirmed by that build booting.
+**TL;DR.** The file is split into two half-bank planes, and banks `$C0` and above are a window onto the
+second one rather than storage of their own. This document calls that a **windowed LoROM** map. The rule
+comes from neviksti's *Star Ocean no S-DD1/96Mbit hack*, recovered here by inspection and confirmed by
+that build booting.
+
+### Why it is named for what it does
+
+The name had to be invented, and the two earlier attempts at it are worth recording because both were
+wrong in instructive ways.
+
+The first draft called this the Game Doctor image format. The Game Doctor SF7 is the cartridge these
+images were tested on, and it does define a file-splitting convention of its own, the `.078` parts that
+[`romtools.py`](romtools.py) joins. Neither is this layout. Naming a rule after the hardware it happened
+to run on credits the wrong source and makes a recovered rule look like a documented standard.
+
+The second draft called it the Star Ocean layout, after the conversion the rule was recovered from. That
+is at least true, and it is kept below as provenance, but it is a poor name for a mapping because it
+describes nothing. A reader meeting it in the upstream issue learns only that some other game did this
+first.
+
+Looking for an existing name finds none. The hack is distributed as "Star Ocean no S-DD1/96Mbit hack",
+the description that has circulated with it for twenty years is that the ROM "uses an unusual mapper
+that is not compatible with most emulators", and the only emulator historically named as handling it is
+Super Sleuth. The nesdev discussion of 96 Mbit images describes the same three regions this project
+works with, `$C0`-`$FF`, `$40`-`$7D`, and `$00`-`$3F` with `$80`-`$BF`, and assigns them no name either.
+It is not ExLoROM, which tops out well below this size, and snes9x's nearest guess,
+`Map_JumboLoROMMap`, is a different layout that renders nothing.
+
+So the name describes the mechanism. Every other large-ROM SNES map, ExLoROM, ExHiROM, Jumbo LoROM,
+extends the address space by adding more linear banks. This one aliases a region onto a second storage
+plane instead, which is the window, and that is the single property that separates it from all of them.
+The emulator calls the routine `install_windowed_lorom_map`.
+
+### What the map actually is
+
+Three regions, no mapping registers and no bank switching anywhere:
+
+| banks | exposed | served from |
+|---|---|---|
+| `$00`-`$3F`, `$80`-`$BF` | `$8000`-`$FFFF` only, LoROM | the high-half plane |
+| `$40`-`$7D` | full 64 KB, HiROM style | both planes |
+| `$C0`-`$FF` | full 64 KB | **the low-half plane, and never its own** |
+
+Bank `$C0+k` owns no storage. Its `$8000`-`$FFFF` is the low half of bank `k`, and its `$0000`-`$7FFF`
+is the low half of bank `$80+k`. So the low-half plane is reachable only through the window, and the
+high-half plane only through the LoROM banks. That is how 192 banks of storage cover a 256-bank address
+space while the map stays completely static.
 
 A 4 MB LoROM cartridge stores 32 KB per bank and the file is simply those banks end to end. A 12 MB
 image cannot work that way, because the address space does not have room: 192 banks of 64 KB is more
@@ -425,7 +490,7 @@ from the lower halves of two other banks:
 This is what makes the format unlike any standard SNES mapping, and it is why an emulator cannot serve
 these images by deinterleaving the file and applying an existing map. The window aliases content that
 other banks also expose, which is how 192 banks of storage cover a 256-bank address space, and it is
-the specific rule quoted in the upstream issue in section 20.
+the specific rule quoted in the upstream issue in section 22.
 
 ### How I confirmed it
 
@@ -442,7 +507,7 @@ this mapping and nothing else.
 decompressed graphics packed into free banks, and four lookup tables the patch uses to translate
 addresses.
 
-[`rombuild.py`](rombuild.py), 20 tests, assembles the image:
+[`rombuild.py`](rombuild.py), 25 tests, assembles the image:
 
 | region | contents |
 |--------|----------|
@@ -483,7 +548,7 @@ and the lookup scans forward until the key byte matches the source bank. `alloca
 and `verify` proves that every stream's scan lands on its own slot and nobody else's. Median scan
 distance is 0 in both regions, worst case 31.
 
-I had no idea at the time that this number would later be the thing that cracked section 15.
+I had no idea at the time that this number would later be the thing that cracked section 17.
 
 ---
 
@@ -630,7 +695,7 @@ lot of instrumentation purely to find bugs, which is development-only and stays 
 snes9x cannot load these images. It sees a 12 MB file with a LoROM header and maps it as best it can,
 which is wrong in the low half of every bank and wrong across the entire `$C0`-`$FF` window.
 
-[`emu/main.cpp`](emu/main.cpp) has `install_game_doctor_map`, which rewrites `Memory.Map` after load
+[`emu/main.cpp`](emu/main.cpp) has `install_windowed_lorom_map`, which rewrites `Memory.Map` after load
 following the rules in section 6. Two things caught me out beyond the addressing itself:
 
 The emulated S-DD1 has to be switched off. snes9x's chip rewrites the `$C0`-`$FF` mapping whenever
@@ -641,7 +706,33 @@ And banks `$7E` and `$7F` have to be left alone. They are work RAM, not ROM, and
 easy way to lose an afternoon.
 
 This is the change that would let anyone run these images in snes9x, and it is what I eventually took
-upstream in section 20.
+upstream in section 22.
+
+### Playing one of these images
+
+The harness is headless: it runs a fixed number of frames on scripted input and writes frames to disk.
+That is right for a gate and useless for looking at the game, and no desktop emulator can load a 96 Mbit
+image, which section 22 is about.
+
+[`emu/play.cpp`](emu/play.cpp) is a small SDL2 frontend over the same core, with video, sound and a
+keyboard, and it installs the same map by including the same file the harness does,
+[`emu/windowed_lorom.cpp`](emu/windowed_lorom.cpp). One copy of the addressing rule, two frontends. It
+also carries the lookup probe, and `C` writes the current frame plus the next four seconds, so a player
+who sees something wrong can capture it rather than describe it. That is how the defect in section 19
+was first reported.
+
+It builds natively rather than in a container, because it needs a window:
+
+```
+git clone --depth=1 --branch 1.63 https://github.com/snes9xgit/snes9x.git build/native/snes9x
+make -C build/native/snes9x/libretro STATIC_LINKING=1 -j8
+clang++ -O2 -std=c++11 -o build/native/sfplay emu/play.cpp emu/windowed_lorom.cpp \
+  -Ibuild/native/snes9x -Ibuild/native/snes9x/libretro \
+  -Ibuild/native/snes9x/libretro/libretro-common/include \
+  -Ibuild/native/snes9x/apu -Ibuild/native/snes9x/apu/bapu \
+  $(pkg-config --cflags --libs sdl2) build/native/snes9x/libretro/snes9x_libretro.dylib
+./build/native/sfplay build/all/usa-both-free.sfc -2
+```
 
 ### The part that exists only for diagnosis
 
@@ -657,6 +748,11 @@ because none of the diagnoses in this file can be reproduced without it.
 | APU RAM dump | recovering the running sound driver for disassembly |
 | per-block sample verification | comparing every uploaded block against its ROM source |
 | lookup scan logging | the address each translation asks for and how far it walks |
+| sample group walk tracing | which sample groups a load walks, and what each one costs |
+| frame hashing | which frames two builds disagree on, without guessing where to look |
+| forced matchup driver | reaching a named fight, and a named character variant, on demand |
+| pre-fight table write counting | what the builder costs, and whether the DMA replaced it |
+| scanline sampling at the main loop's end | how much of the frame the processor actually uses |
 | frame brightness sampling | whether the game is still drawing |
 | closed-loop input driver | steering menus toward a character |
 
@@ -876,10 +972,16 @@ the opening; at `$1F3E` it landed on state the chip bypass needs and cost the ch
 graphics lookups. A stack has no such failure mode, because everything that runs in that window pushes
 and pops in balance, so nothing outside the region is touched.
 
-The region is `$1F3E` to `$1FE1`, the larger of the two runs in the low 8K that the console never reads
-and never writes across a run of all eighteen fighters, on the cartridge build and on the chip-free one
-alike. The measurement that chose `$1700` recorded reads only, and a buffer the processor fills and
-then hands to DMA is never read, so it looked free and was not.
+The region is `$1F3E` to `$1FE1`, chosen because a region survey named it the larger of the two runs in
+the low 8K that a tour of all eighteen fighters touches in neither direction, on the cartridge build and
+on the chip-free one alike. The measurement that chose `$1700` recorded reads only, and a buffer the
+processor fills and then hands to DMA is never read, so it looked free and was not.
+
+That survey is not the last word either, and section 13 has the correction: a write watch added later
+finds game code writing both ends of this run, `$1F3E` 432 times and `$1FC6` 7,888 times across the same
+tour. The stack is clear of both by counting rather than by luck. It parks six words and makes one local
+call, so the deepest it reaches is `$1FD2`, fourteen bytes below its top and twelve above the first live
+byte under it. The region was fine; the sentence that justified it was not.
 
 The result on both cartridges:
 
@@ -891,11 +993,39 @@ The result on both cartridges:
 
 Against retail that is 2.60 s down to 0.72 s on the Japanese cartridge and 2.90 s down to 0.78 s on the
 USA one. Every block verifies byte for byte against sound RAM in both regions, 73 on the Japanese build
-and 153 through the converted uploader on the USA one, and all 16 images pass the matrix in section 17.
+and 153 through the converted uploader on the USA one, and all 16 images pass the matrix in section 19.
 
 The patch is [`asm/spc-fast-upload.asm`](asm/spc-fast-upload.asm), applied by
-[`spcfast.py`](spcfast.py), 28 tests, which reproduces the assembled output byte for byte in both
+[`spcfast.py`](spcfast.py), 29 tests, which reproduces the assembled output byte for byte in both
 regions.
+
+### The faster store, and why it does not fit
+
+gizaha's shipped receiver stores each byte with a self-modified `mov !abs+x,a` at five cycles where
+this one uses `mov (dp)+y,a` at seven. Three stores per handshake, so his loop is 37 cycles against
+this one's 49, and adopting it looked like the last cheap win in the sound path.
+
+It does not fit, and the budget says so exactly. The receive region runs from `$0EBD`, where a data
+block begins, to `$0F25`, which is 105 bytes, and 104 of them are in use: four for the block start, six
+for the kind dispatch, seventeen for the one-byte loop, four for its edge test, thirty four for the
+triple loop, twenty for the header parse and nineteen for the triple setup.
+
+Converting the stores costs more than the loop. Each store grows by one byte and each page-carry
+`inc` by one, which is the five bytes the loop needs. The setup is the larger half: the three
+destination pointers currently go into direct page with `movw`, two bytes each, and putting them into
+the instruction stream instead needs `mov !abs,a` and `mov !abs,y`, six bytes each. That is twelve more.
+Seventeen bytes wanted, one available, **sixteen over**.
+
+There is one arrangement that fits. Dropping the one-byte protocol frees the dispatch, the byte loop
+and its edge, twenty seven bytes, and the whole thing lands at 94 with eleven to spare. That means
+converting the six uploaders this project deliberately left alone and the IPL boot path with them,
+which is the trade section 13 already made and made for a reason: the boot ROM is mask ROM inside the
+S-SMP and can only ever read one byte per handshake.
+
+So the measured 9% stays unclaimed, and the reason is a byte count rather than a judgement. Three
+branches reach into the region from outside it, at `$0E99` and `$0EBB` to the header and at `$0F26` to
+the block start, so the entry points could be moved if the region were rewritten wholesale. Moving a
+boundary does not create space.
 
 ### The trap, and how it was avoided
 
@@ -925,10 +1055,182 @@ Deduplication buys nothing here. Measuring first saved building it.
 
 Reading that patch's source afterwards showed I had tested the wrong thing. What it disables is not a
 repeated upload of the same bytes, which is what 2% measures, but whole sample groups the engine walks
-again when they are already resident, and separately the music sequence, which its MSU-1 version does
-not need because the music streams from the SD card. The first of those would apply here and is
-untested; the second cannot, since without MSU-1 hardware the sequence is still needed. That is the one
-remaining idea that shortens the pause by moving fewer bytes rather than moving them faster.
+again when they are already resident. That measurement was worth redoing properly, and it is the next
+subsection.
+
+### Skipping groups that are already loaded, measured and dropped
+
+The engine is at `$C7:005B`. It resets a sample allocator to `$1500`, uploads the list named by the id
+it was called with, records the allocator at `$7E:2000`, then walks three groups whose ids sit in the
+direct page at `$80`, `$81` and `$82`. Those are player one's samples, player two's, and the round
+announcement set. At `$C7:011A` a zero id ends the whole walk, and gizaha's change turns that into a
+skip so a group can be left out without ending the walk, with the allocator bookmarked at `$7E:2003` so
+the group after it keeps its address. Both are in his shipped 2022 build, at `$C7:0164` and `$C7:0173`.
+
+Measuring what that is worth needed an instrument. `SFGROUP` reports the walk state at every write to
+`$8F` from bank `$C7`, which is the group index and is written in exactly three places, and
+[`tools/sample_reuse.py`](tools/sample_reuse.py) replays every uploaded block against a shadow of sound
+RAM and asks, per group, whether those bytes were already sitting at that destination. Four builds, an
+eighteen fighter tour each, 216,000 frames each:
+
+| build | engine loads | bytes moved | already resident | group 0 entirely resident | group 1 entirely resident |
+|---|---|---|---|---|---|
+| USA cartridge | 425 | 9,509,144 | 19.3% | **0 of 407** | 20 of 121 |
+| USA chip-free | 410 | 8,865,393 | 18.8% | **0 of 391** | 16 of 113 |
+| Japan cartridge | 383 | 8,364,340 | 19.8% | **0 of 364** | 14 of 103 |
+| Japan chip-free | 407 | 9,494,314 | 19.0% | **0 of 389** | 18 of 114 |
+
+Group 0 never qualifies, in 1,551 walks across four builds. The reason is the allocator: it is a bump
+allocator restarted at `$1500` on every load, so group 0 sits immediately after a list whose size varies
+with the stage, and its destination moves almost every time. Group 1 qualifies about one walk in six,
+worth 3.3 seconds of driver time across an hour of play. Group 2 is never used at all: `$82` is zero in
+every one of the 425 loads.
+
+So the idea is dropped. It works in gizaha's build because his data layout creates the conditions for
+it, and creating them here means re-laying out the sample tables, which is a large change on a path
+where a wrong byte corrupts audio silently, for three seconds an hour.
+
+### Moving the group tables, measured and dropped
+
+His patch also moves the three group directory tables from `$EA00`, `$EC00` and `$EE00` to `$FB00`,
+`$FD00` and `$FF00`, freeing sound RAM for samples. It is twelve bytes: one in the table at `$C7:04CD`
+and eleven in the driver routine at SPC `$0FB3` that reads it. It ships in his 2022 patch and is marked
+a test in his source.
+
+Two measurements say not to take it. The space it frees is already free: the highest the sample
+allocator ever reaches across all four tours is `$CAE6`, and the tables begin at `$EA00`, so there are
+already 7.7 KB nobody uses. And the destination is occupied. Dumping sound RAM at two points 3,000
+frames apart and diffing them shows one large region rewritten continuously, `$EF00` to `$FEFF`, which
+is the DSP echo buffer. Two of the three new table addresses are inside it. Taking those twelve bytes
+alone would have the echo overwrite the sample directory sixty times a second, and the reason it works
+for gizaha is the rest of his driver rewrite, not the twelve bytes.
+
+### What his shipped patch actually does better
+
+Worth measuring rather than assuming, since his 2022 patch and his 2021 source disagree. Applying the
+patch and running it here, same emulator, same 12,000 frames, same scripted input:
+
+| build | longest stall | APU port writes | busy frames | writes per busy frame |
+|---|---|---|---|---|
+| retail USA | 2.60 s | 200,003 | 380 | 526 |
+| this project, three bytes per handshake | 0.72 s | 140,986 | 107 | 1,318 |
+| gizaha 2022 | **0.30 s** | 54,615 | 38 | 1,437 |
+
+His receiver is faster per byte, but only by about 9% measured, not the 25% its cycle count suggests,
+because his sender is co-limiting. The gap is payload: he moves 61% fewer bytes. Most of that is that he
+does not load per-stage samples at all, replacing every per-stage list with one shared list. That is a
+change to which sounds a stage has, not an optimisation, and it is a decision rather than a defect to
+fix. The one idea of his that moves fewer bytes without removing sounds is skipping a whole load whose
+request repeats, and that one is shipped here. It is the next subsection.
+
+### Skipping a load that repeats, measured and shipped
+
+The engine resets its allocator to `$1500` on every load and places the base list first, so every group
+lands above whatever the list occupies and no group upload can reach into the list's own region. The
+only thing that can overwrite a base list is a different base list, which turns "is the list still
+resident" into "was the last list loaded the same one". That is a byte compare, and it is the whole of
+the idea.
+
+It also does not need a new skip path, because the engine already has one. Called with a list id of
+zero it jumps to `$C7:00EE` instead, restores the allocator from `$7E:2000`, and walks the three groups
+alone. So the patch does not add a way to skip a list; it recognises when skipping is correct and
+rewrites the id to zero, and the stock path it steers into is one the game takes constantly.
+
+Whether the two conditions really are the same question was measured, not argued. Replaying every
+upload of an eighteen fighter tour against a shadow of sound RAM, four builds, 216,000 frames each:
+
+| build | base lists | same as the one before | of those still resident | resident but not the same |
+|---|---|---|---|---|
+| USA cartridge | 265 | 51 | **51** | **0** |
+| USA chip-free | 240 | 43 | **43** | **0** |
+| Japan cartridge | 234 | 41 | **41** | **0** |
+| Japan chip-free | 254 | 46 | **46** | **0** |
+
+181 candidates, and the two conditions never disagree in either direction. The instrument also records
+the list id at each load, and on the USA cartridge all 51 repeats carry the same id as the load before
+them, so the id compare the patch performs is as sharp here as comparing the bytes would be.
+
+What the patch is worth was then measured by building one cartridge that differs from another in this
+patch alone, and running the identical tour on both:
+
+| build | blocks sent | bytes sent |
+|---|---|---|
+| USA, without | 6,903 | 9,615,932 |
+| USA, with | 5,978 | 8,775,166 |
+| Japan, without | 5,728 | 8,403,872 |
+| Japan, with | 5,317 | 8,100,532 |
+
+840,766 bytes on the USA cartridge and 303,340 on the Japanese one, 8.7% and 3.6%, about 13 and 5
+seconds of driver time across an hour of play. It is the largest single saving left in the sound path.
+The USA figure is lower than the 1,149,936 bytes the replay predicts, and the reason is that the two
+runs stop being frame identical the moment the first skip lands, so the second half of the tour is not
+the same tour. Replaying the patched build finds 18 base lists whose bytes still repeat, worth another
+403,601, which the routine declined. That residue is a saving left on the table rather than a
+correctness question, and the next subsection is what came of chasing it.
+
+On the USA side the `both` cartridge, which also carries the small corrections and the Shin Akuma
+unlock, sends exactly the same 5,978 blocks as the cartridge carrying this patch alone. The Japanese
+`both` cartridge sends 5,346 against the skip-only build's 5,317, a difference of 29. That is not the
+skip behaving differently: the retired empty calls move the build by about a frame, section 15 measured
+that directly, and a tour driven by a fixed input script does not visit the identical sequence of stages
+once the timing shifts. Nothing in the difference is a block that failed to verify.
+
+The routine is 61 bytes at `$C7:F600`, reached by replacing the `lda #$1500` at `$C7:0069` with a call,
+and it returns with `A` holding `$1500` so the instruction it replaced is not lost. Its record lives at
+`$1F3F`: two bytes of magic, `$5A` and `$A5`, then the id of the last list actually uploaded. The magic
+is there because work RAM does not come up zeroed on a console, a lesson this project already paid for
+once in section 17: a marker with no validity check reads garbage after power-on and could skip the
+first load of a session. Both halves have to match, so garbage matches once in sixteen million, and
+after the first real load the record is always right.
+
+### Chasing the residue, and a claim that did not survive it
+
+The 18 unclaimed repeats were worth pulling on. They are consecutive uploads of the same list, carrying
+the same id, and by the design nothing should have been able to move the record between them. The first
+suspect was the record itself, so `SFPOKE` was added, which prints the frame and program counter on
+every write to a named work RAM address, and the tour was run again watching all three of its bytes:
+
+| address | writes across the tour | from |
+|---|---|---|
+| `$1F3E` | 432 | `$C0:0121`, `$C0:0133`, `$C0:06A7`, `$C0:06B9`, all game code |
+| `$1F3F` | 231 | the routine, and only the routine |
+| `$1F40` | 231 | the routine, and only the routine |
+
+The record started at `$1F3E`, so its first magic byte was sitting on a live game variable. Watching the
+whole run says where the free space actually is:
+
+| address range | writes across the tour | from |
+|---|---|---|
+| `$1F3E` | 432 | four sites in bank `$C0` |
+| `$1F3F` to `$1FC5` | **0** | nothing |
+| `$1FC6` | 7,888 | `$C0:01DA` |
+
+Both ends are live and only the inside is free, so the record moved up one byte to `$1F3F`, where
+nothing but the routine writes. That is the version that ships.
+
+It did not recover the 18. Rebuilding with the record at `$1F3F` and running the same tour sends the
+same 5,978 blocks and the same 8,775,166 bytes as the version whose magic sat on the live byte, to the
+byte. So the collision was real and worth removing, and it was not what declined those skips. What does
+decline them is not established here, and the plausible-sounding story that it was the clobbered magic
+is exactly the story the measurement refuses.
+
+The safety argument is unchanged either way, and this is what the two magic bytes buy: a record that
+loses its magic can only refuse a skip, never invent one.
+
+The correction reaches back into section 13, which picked the same run for the sound transfer's private
+stack on the same survey's word. That stack is fine, but for a reason the survey never supplied: it
+parks six words and makes one local call, so it reaches `$1FD2` at the deepest and stops twelve bytes
+above `$1FC6`. The lesson is the one section 17 already paid for in a different currency: a region is
+free when a measurement says nothing wrote to it, not when a survey says nobody visited.
+
+What this changes for the player is not a byte count. The base list carries the music sequence as well
+as the stage's samples, so a skipped list means the sequence is not sent again and the music does not
+restart. The case where that happens is the same stage loading twice running, which is the second and
+third rounds of a fight. The arcade lets the music run across rounds and the SNES release restarts it,
+and gizaha's patch stops the restart deliberately for the same reason. Whether it sounds right is a
+listening test, and nothing measured here settles it. What is settled is that the sixteen image matrix
+passes, that the eighteen fighter tour reports no corrupt upload on any of the four images that carry
+the patch, and that every block still sent matches its source byte for byte.
 
 ### One attempt that is not shipped
 
@@ -1097,7 +1399,340 @@ Japanese one. [`shinakuma.py`](shinakuma.py), 22 tests, finds it by signature an
 
 ---
 
-## 15. The Japanese build that never worked
+## 15. Small corrections
+
+**TL;DR.** Eleven entries, 214 bytes on the USA build and 56 on the Japanese one, taken from gizaha's
+patch and checked against the retail cartridges rather than copied. Most are worth more here than in
+the patch they came from, because this project could verify them further than he could. Two were
+dropped after the drivers written to test them produced evidence against them, and one was built,
+measured and taken back out.
+
+[`gamefixes.py`](gamefixes.py), 45 tests, carries them. Every entry is found by a byte signature, never
+by a hardcoded offset, so one table covers both regional ROMs and a ROM that does not match refuses the
+patch instead of writing into the wrong place. Applying it twice is a no-op.
+
+Two invariants in the tests are worth naming, because each was written after the thing it forbids
+happened. Every run must appear exactly once in each region it claims, and its patched form must appear
+nowhere, so the probe that decides "already applied" can never land on a second match. And no run may
+contain the start of another stream, which is the rule that caught a run sized 267 bytes from
+`decompress().end` without subtracting the read-ahead: the neighbouring stream begins one byte inside
+it, and the first build wrote a zero over its first byte.
+
+### Sixty frames a second on three stages, built and taken back out
+
+gizaha's `stage mods.asm` makes three stage animations run every frame instead of every other: the
+lights on the aircraft behind Charlie's stage, the lens glare and turbine on Bison's, the lamps on
+Dan's. Sixteen data bytes hold how long each lamp stays lit and dark, and one branch gates the whole
+thing on the low bit of the frame counter at `$1A96`. The gated body is three instructions,
+`lda $15 / eor #$20 / sta $15`, which toggles one bit of a background object. Presentational by
+construction.
+
+All eighteen bytes port to both regions under content addressing, the three light tables at a constant
+`+0x41` shift in the Japanese ROM and the gate at `+0x25`. Built, the image changed by exactly the
+eighteen bytes appearing three times each in the windowed LoROM layout plus the checksum, with nothing
+else touched, and the propeller visibly spins at twice the rate.
+
+It does not ship, and what killed it is what the frame diff showed after the first differing frame.
+The change starts as 236 differing pixels out of 57,344, localised to the propeller blades. Then it
+grows:
+
+| frame | differing pixels | share of screen |
+|---|---|---|
+| 1277 | 236 | 0.4% |
+| 1600 | 621 | 1.1% |
+| 2000 | 6,069 | 10.6% |
+| 2200 | 35,347 | 61.6% |
+| 4200 | 48,882 | 85.2% |
+
+The first suspicion was the driver, which presses start into the fight. Re-run with no input at all
+after the round begins, the divergence still climbs to 85%. It is not a uniform slowdown either: no lag
+between minus thirty and plus thirty frames realigns the two streams. So the fight itself takes a
+different course, and a change advertised as background presentation is not confined to presentation.
+
+Fifteen of the eighteen matchups stay bit-identical for 3,600 frames, so whatever it is is narrow. But
+narrow and unbounded is still unbounded, and the whole benefit is a smoother propeller. Both images
+were restored bit-for-bit and the four entries came back out of `gamefixes.py`.
+
+The related item, `health bars dithering.asm`, is not attempted at all. It dithers the bars by
+alternating two patterns on consecutive frames, which is blending on a cathode ray tube and flicker on
+anything else, and it moves the vertical raster interrupt one scanline earlier to make room for two
+extra transfers per frame. gizaha annotates it himself with a warning about half a black line at the
+bottom of the screen.
+
+### What the processor has spare, and why the rest of the speed work stopped
+
+gizaha's patch carries about forty five more speed changes: `lda #$00` and `xba` replaced by `tdc`,
+retargeted branches, object loops bounded by live counts instead of a fixed eight, faster writes into
+the sprite table. Taking them needed a way to tell whether they do anything, which this project did not
+have: the pre-fight stall is what section 13 measures, and none of these touch it.
+
+The marker turned out to be already in the game. The main loop ends at `$C0:00FA` with `stz $1a99`,
+clearing the flag the frame interrupt sets, and then spins at `$C0:00FD` until it comes back. Sampling
+the scanline counter at that store says how much of the frame the loop used, which is the same thing
+gizaha counts in vlines. `SFVLINE` does it, filtered to that one program counter so it samples once per
+frame.
+
+| build | mean scanline at loop end | frames ending at line 224 or later |
+|---|---|---|
+| retail USA | 163.0 | 21.0% |
+| this project's release build | 136.6 | 16.2% |
+
+Out of 262 lines, so the loop leaves about half the frame unused on average, and the interesting part
+is the tail: one frame in six still runs to the end of the visible field. That tail is the only place
+the remaining tweaks could pay.
+
+They are not taken, for a reason that is about proof rather than size. The forty five empty calls above
+ship because equivalence is mechanical: the target is a bare `rtl` and the next byte is `rts`, so the
+transformation cannot change behaviour and a search finds every instance. The rest is not like that.
+`tdc` copies the direct page register into A and matches `lda #$00` only while the direct page is zero,
+which has to be proved at each of the twenty five sites; gizaha marks his own with the note that it is
+doubtful. The object loops change how many objects are drawn. Retargeted branches skip code that has to
+be shown redundant one branch at a time.
+
+And the metric cannot referee them. It does not separate the release build from the one without the
+forty five retired calls: both sample identically, because fourteen cycles a call is far below a
+sixteen line bin. The frame hashing in the previous subsection did detect that change, over 216,000
+frames, which is the more sensitive instrument and also the slower one. So each remaining tweak would
+need its own static proof and could not be confirmed by measurement afterwards. That is the wrong trade
+for a game with half a frame to spare.
+
+### The arcade-accuracy change, and the driver that was asking the wrong question
+
+gizaha reorders Akuma's win poses to the arcade order, four words at `$C2:0048` and one compare at
+`$C1:E946`, both outside every stream and both byte-identical between the regions. The first attempt
+here built it as a variant, drove Akuma against Sagat for 12,000 frames through knockouts, measured
+**zero differing frames**, and dropped it on that evidence.
+
+The evidence was worthless and the reason is embarrassing in hindsight. Akuma was player one, and the
+driver plays badly enough to lose. A win pose only plays for the fighter who wins, so the animation the
+change alters never once ran. Zero differing frames measured nothing at all.
+
+Putting Akuma on the other side settles it immediately. `SFSCENE=00,02` with player one idle hands the
+round to the processor, and across 14,000 frames the stock and reordered builds differ on **212 frames
+in four runs**, the first spanning frames 7024 to 7207. That is 184 frames, about three seconds, which
+is the length of one win pose, and every frame outside those runs is identical. The captured pair shows
+Akuma standing over a defeated Ryu under the perfect-round banner, shivering in one and striking the
+taunt in the other.
+
+So it ships, and the two halves ship together. They cannot be separated: the code finds the pose that
+shushes without a sound by index rather than by pointer, and moving the taunt to the front pushes that
+pose from second to third, so the compare goes from `$01` to `$02`. A test derives the expected index
+from the reordered table rather than hardcoding it, so the two can never drift apart.
+
+The lesson generalises past this change. A driver that never reaches the state under test reports zero
+differences, and zero differences reads exactly like proof of no effect. Before believing a null
+result, check that the driver visited the state: here, that somebody won.
+
+### The two that shipped with evidence
+
+The USA release renamed Sodom to Katana, in two tables of name plate records: one under the life bars
+at file `0x0088C0` and one on the character select screen at `0x00D68C`. Each record is a video memory
+address and a length in tiles, and the USA build points Sodom's at tile `$6D` where the Japanese build
+points at `$1D`. So this is one byte in each table, on the USA side only, and the Japanese build reads
+as already correct, which is how the signature approach discovers the asymmetry on its own rather than
+needing to be told.
+
+Finding what it changed on screen was done by hashing every frame of an eighteen fighter tour on both
+builds and comparing. Of 216,000 frames, 6,142 differ, and every one of them is inside a single
+fighter's segment. Dumping frames from both builds at the same frame number shows the whole difference:
+
+```
+select screen, frame 159200   KATANA -> SODOM
+life bar,      frame 162000   KATANA -> SODOM, 725 differing colour bytes and nothing else
+```
+
+Frame hashing is the tool that makes this honest. It answers where a change shows up without anyone
+guessing, and when it reports zero differing frames the change did not reach the screen at all, or the
+driver never got there. Which of the two it is has to be established separately, and section 15 records
+what happens when that step is skipped.
+
+### The same rename, in the two places it was still missing
+
+Those two tables are pointers, and they are not the only places the name is drawn. Reading gizaha's
+`restore player names.asm` rather than only taking its bytes shows four sites, and this project shipped
+two of them for weeks. The build said Sodom under the life bar and on the select screen while still
+saying Katana on the screen that introduces the match and on the statistics screen after it. A partial
+rename is worse than none, because it reads as a bug in the build rather than as the release's own
+choice.
+
+The two that were missing are not pointers:
+
+| Screen | Form | Run | Changes |
+|---|---|---|---|
+| Pre-fight versus screen | raw tilemap at `0x002260` | 56 bytes | 24 |
+| Post-match results | S-DD1 compressed stream at `0x1AB82E` | 266 bytes | 132 |
+
+The tilemap is sixteen-bit entries whose low byte is a tile and whose high byte is `$25` throughout,
+two tiles per letter, so a six-letter name becoming a five-letter one turns two more entries into the
+blank tile `$5C`. The Japanese build already carries that run byte for byte, exactly like the two
+plates.
+
+The compressed one is the interesting case, because it is the first entry whose run is compressed data
+rather than the thing that gets drawn. What it decodes to is plain text, one character per tilemap
+entry, and the fix moves six bytes of it. gizaha could not verify his own blob past building it; here a
+test decompresses the patched stream and asserts that exactly those six bytes changed inside 2,048 and
+nothing else, so the replacement is verified rather than trusted. His unpatched blob decodes to
+precisely the bytes this project already ships, which is an independent check on the decompressor from
+a source that has nothing to do with it.
+
+Three things about that stream are worth writing down, because each cost a build:
+
+- The replacement is 260 bytes and the decoder reads 264 of them, so the bytes past it are read as
+  compressed data. Leaving the original bytes there decodes 160 later bytes wrongly and filling with
+  `$FF` decodes 243 wrongly. Zero decodes all 2,048 exactly as intended.
+- The run stops at 266 bytes because the next stream starts there. A run of 267, taken from
+  `decompress().end` without subtracting the read-ahead, writes a zero over that stream's first byte,
+  and `verify_image` reported it as a second wrong stream immediately.
+- gizaha's own build writes the replacement with a bare `incbin`, which leaves the original trailing
+  bytes in place.
+
+Driving all eighteen matchups, exactly one differs, `0x06`, on exactly six frames, all before the fight
+and none during it. That both identifies Sodom and shows the change is confined to the drawn name.
+
+### The crash nobody here has seen
+
+The one entry in this section that is not cosmetic. When the game wants a ninth shadow frame and all
+eight slots are full, the path at `0x057537` gives up on finding a free slot and overwrites the first,
+then goes on to increment the count of live objects as though it had added one. The count then exceeds
+the number of objects that exist, and the projectile against player collision search walks past the end
+of the table it is scanning.
+
+gizaha's analysis is corroborated rather than taken on trust: the increment he blames is real and
+reachable, at `$0575AA` in the USA ROM and `$0575B9` in the Japanese one, the same distance past the
+site in both. The fix decrements the count at the site so the later increment leaves it where it
+started. Three bytes move inside sixteen and the run stays its own length, because the first of two
+stores is dropped to make room for the decrement, the remaining store moves below the branch, and the
+branch shortens from five to three to match.
+
+What is not claimed: the crash has not been reproduced here. Eight simultaneous shadow frames plus a
+projectile collision is a state no driver reaches. The fix rests on the disassembly and on finding the
+increment, not on a before and after.
+
+### The one that is measured rather than seen
+
+The routine at `$FF:FF4D` is a single `rtl` and does nothing. Every one of the 42 `jsl` instructions
+that reach it in either regional ROM is immediately followed by `rts`, so the call and its return are
+the only work either instruction performs. Replacing the `jsl` opcode with `rts` returns from the caller
+at that point instead, which is where control was going anyway, and saves eight cycles of call plus six
+of return. A second empty routine at `$FF:FEA1` has three callers, two of which are followed by `rts`;
+only those two are rewritten. The three operand bytes are left in place, so any branch that targets the
+`rts` after them still lands on an `rts`.
+
+gizaha found nine of these sites. Asking the question mechanically, every long call in the ROM whose
+target byte is `rtl` and whose own next byte is `rts`, finds **forty five** across three routines: the
+two he names plus one at `$F0:1EEF` with a single caller. The same question asked of short calls
+within a bank finds none. That is why the module searches instead of listing addresses. None of the sites is
+inside an S-DD1 stream, checked against both stream tables, so the re-layout carries them through
+untouched.
+
+I expected this to be invisible: the semantics are identical, so the frames should be identical. They
+are not. Across the same tour, 21,494 of 216,000 frames differ, and 78% of those are explained by a
+phase shift of one to three frames, dominated by the patched build being **one frame ahead**. The game
+was losing that frame to work that did nothing, and the saving shows up as the animation arriving
+earlier. That is the intended effect, and it also means frame equality is the wrong gate for this
+change; the sixteen image matrix and the fighter tour are.
+
+### Driving to the scene, and what it settled
+
+Two of gizaha's fixes touch things no existing driver here reaches: three sprite records in the frame
+where Sagat holds Dan's father, at file `0x3EA95E`, and Shin Akuma's neutral jump light punch, which
+asks for animation frame `$49` where he says `$09` belongs. Neither could be shown, so a driver was
+written for them.
+
+`SFSCENE` forces both characters by id, drives the menus, then goes quiet so the pre-fight sequence
+plays out instead of being skipped. `SFSCENEVARIANT` forces the variant byte, which is what selects
+Shin Akuma rather than Akuma. `SFSCENEJUMP` then jumps straight up and presses one attack button per
+jump, rotating through all six. It works: it reaches real fights, and the character it puts on screen
+is the one asked for.
+
+```
+SFSCENE=00,0B                       Ryu vs Sagat, round 1, fight
+SFSCENE=02,0B SFSCENEVARIANT=14     Shin Akuma vs Sagat, variant $14 confirmed
+```
+
+What it settled is that neither fix does anything reachable.
+
+The sprite table is never read. Not once, across a two fighter tour, an eighteen fighter tour, 90,000
+frames of attract with no input, which does reach the ranking screen, the opening cinematic, the title
+and a demo match, 150,000 frames of a single fighter working through the ladder, and every one of the
+eighteen forced matchups against Sagat. Bank `$FE` is read 221,335 times in a single tour, so the
+address is right and the game does read that bank; the scene is simply somewhere no driver goes. It has
+exactly one caller, `$C1:C159`, which spawns object type `$0174` through `$C5:63CD`, and that is the
+path gizaha hooks.
+
+Shin Akuma is stronger than that: it is evidence against rather than absence of evidence. Driven
+through 133 neutral jumps with every attack button, across 12,000 frames, the stock and fixed builds
+produce **zero differing frames**. If the neutral jump light punch used that entry, it would have
+shown. So the entry is either not the one he describes or not reached that way, and changing `$49` to
+`$09` risks replacing a correct frame with a wrong one for no demonstrated gain. It was dropped.
+
+The sprite fix stays. It has gizaha's own before and after photograph behind it, the three bytes are
+confined to one run that the patch carries whole, and the same runs prove it changes nothing that any
+driver reaches. That is a weaker footing than the rest of this section, and naming it here is the
+point.
+
+---
+
+## 16. The pre-fight table, moved out of the processor
+
+**TL;DR.** Before every fight the game spends 27 frames computing a 24,704 byte table that never
+changes. The chip-free image stores the finished table and moves it with one DMA. The 4 MB cartridge
+cannot: there is no 24 KB hole anywhere in it.
+
+### The table is a constant
+
+The builder is at `$C0:B606` in the USA ROM and `$C0:B60B` in the Japanese one, found by the 26 byte
+signature of its opening constants. It reads nothing. It starts from `$004B7A00`, subtracts `$00011820`
+sixty four times writing the high word of each result, then advances the start by `$8C10` and shrinks
+the step by `$02EB`, 193 rows over. `$C1` times `$40` words is exactly the `$6080` bytes it fills at
+`$7E:9440`.
+
+[`prefight.py`](prefight.py) reproduces that arithmetic in Python. Checked against work RAM dumped from
+the running console after two different matchups, it is **24,704 of 24,704 bytes identical**, both
+times. So the table can be computed once, at build time, and shipped.
+
+### What it costs, measured
+
+`SFTABLE` counts writes landing in the table's range and reports how many frames carry them. The
+builder uses 16 bit stores, which the write hook did not see, so the instrument needed a second hook on
+`S9xSetWord` that feeds this counter alone and nothing else.
+
+| build | writes | frames carrying them |
+|---|---|---|
+| USA cartridge | 25,856 | 29 |
+| Japan cartridge | 25,856 | 29 |
+| USA chip-free, control without the table | 25,856 | 29 |
+| USA chip-free, with the table | 1,152 | **2** |
+| Japan chip-free, with the table | 1,152 | **2** |
+
+The 1,152 writes that remain are the game's own, unrelated, and they are what the two frames carry. So
+the builder costs **27 frames** and the DMA removes all of them. 25,856 is twice 12,352 plus those
+1,152, which is the first thing this measurement settled: the builder has **two** call sites in each
+region and both run. gizaha found one and saved thirteen frames; redirecting both saves twenty seven.
+
+### Why only the chip-free image gets it
+
+The table needs 24,704 bytes. The largest run of filler anywhere in either retail cartridge is 3,210
+bytes and the whole of the USA ROM's filler comes to 14,826, so it does not fit in the 4 MB form at any
+address. The 96 Mbit image has 390,319 spare bytes on the USA build and 443,287 on the Japanese one
+after every decompressed stream is placed, so [`rombuild.py`](rombuild.py) reserves a fixed home at
+`$5F:0000` and never offers that span to the allocator.
+
+This is the one place where the two cartridge forms differ in behaviour rather than only in layout. The
+4 MB build keeps the builder and its 27 frames. That is deliberate: the alternative is giving up a
+saving the larger image can afford, and the measurements above are how the cost of that choice is
+stated rather than hidden.
+
+The routine that does the transfer is [`asm/prefight-table.asm`](asm/prefight-table.asm), 61 bytes in
+the run of `$FF` at file `$07F593` that is free in both regional ROMs, reached through the window as
+`$C7:F593`. Every hardware store in it is long addressed, because it is called with whatever data bank
+the caller happened to hold, and the interrupt disable spans the register setup rather than the
+transfer: an interrupt cannot land inside a DMA, since the processor is halted for its duration, but it
+can land between programming channel zero and starting it, and the frame handler drives that channel.
+
+---
+
+## 17. The Japanese build that never worked
 
 **TL;DR.** The Japanese 96 Mbit image had never rendered a frame. The cause was an incomplete stream
 map, and the diagnostic that found it was how far the lookup had to scan.
@@ -1239,7 +1874,7 @@ changed input is the signal, and I should have read it immediately.
 Harvesting from the converted build. Once that build misses a lookup it programs meaningless DMA
 parameters, and a loop that records those as if they were streams will invent entries the cartridge
 never asks for and shorten entries it genuinely needs. One run of exactly that produced a table with
-eighteen invented streams and two truncations, and it would have shipped had the gate in section 17 not
+eighteen invented streams and two truncations, and it would have shipped had the gate in section 19 not
 rejected it in under a second.
 
 Decompressing a candidate proves nothing either. The format carries no header, no length and no
@@ -1261,7 +1896,7 @@ out.
 
 ---
 
-## 16. Declaring the cartridge honestly
+## 18. Declaring the cartridge honestly
 
 **TL;DR.** Both conversions, mine included, kept the retail header, so both keep claiming a chip they no
 longer contain and a size they no longer are. That is the first reason no emulator can load them.
@@ -1312,7 +1947,7 @@ Header fields are not read by game code, and all 16 builds pass unchanged, but t
 in the whole project that touches bytes the game could in principle read.
 
 ---
-## 17. Validation
+## 19. Validation
 
 **TL;DR.** I build every combination of region, cartridge form and patch set, and run each one for
 12,000 frames. All 16 pass.
@@ -1349,9 +1984,12 @@ the two forms reach slightly different points under the same scripted input.
 Every build: **12,000 of 12,000 frames delivered**, zero dropped; **34 to 38 of 40 brightness samples
 lit**; three fight loads; **zero lookup misses** across all sixteen. Every image carrying the sound
 patch is also driven through all eighteen fighters in turn, resetting between them, and none of them
-stalls or loses a block: **50,285 uploads verified across the eight of them**. Every sample block that reaches the
-audio chip is compared against its ROM source and every one matches: **73 blocks on the Japanese build,
-153 on the USA build**. All eight chip-free images are exactly 12,582,912 bytes.
+stalls or loses a block: **50,652 uploads verified across the eight of them, zero bad**. Of those, the
+four release images, the ones carrying the sound patch, the Shin Akuma unlock and the corrections in
+section 15, account for 25,431: 6,849 on the USA cartridge, 6,090 on the USA chip-free image, 5,817 on
+the Japanese cartridge and 6,675 on the Japanese chip-free one. Every sample block that reaches the
+audio chip is compared against its ROM source and every one matches. All eight chip-free images are
+exactly 12,582,912 bytes.
 
 The lookup counts are worth reading alongside the misses, because they say how far each build gets. The
 Japanese chip-free builds perform 3,863 lookups without the sound patch and 1,501 with it, the USA ones
@@ -1388,7 +2026,7 @@ every frame of a 12,000 frame run. What the hardware entries record is that the 
 Four of them, and between them they cover everything except whether the table is complete.
 
 **Every stream against the reference decompressor.** [`tools/verify_streams.py`](tools/verify_streams.py)
-sends all 2,815 USA and 2,855 Japanese streams through snes9x's own `sdd1emu.cpp` in a container and
+sends all 2,817 USA and 2,855 Japanese streams through snes9x's own `sdd1emu.cpp` in a container and
 compares byte for byte with the Python decompressor. Both regions come back identical, in about thirteen
 seconds each.
 
@@ -1398,13 +2036,19 @@ translation, and compares the bytes actually sitting at the destination against 
 Zero unresolved lookups and zero wrong bytes. This is what rules out the re-layout having damaged
 something, and it is worth stating that it does: of 1,172,430 original bytes replaced in the window
 banks, every run sits inside a stream's compressed data except twelve, which are the header fields
-section 16 rewrites on purpose.
+section 18 rewrites on purpose.
 
 **The build gate.** [`gate.py`](gate.py) refuses to produce an image unless the table has no repeated
 sources, every entry decodes to exactly its recorded length, the worst key scan stays inside its budget,
 and every request in [`requests_jp.py`](requests_jp.py) is covered with a length at least as large. That
 last clause is the one that earns its keep: 1,661 addresses recorded from working hardware, and it
 rejected a table that had invented eighteen streams and truncated two real ones.
+
+**The pre-fight routine against its own source.** [`prefight.py`](prefight.py) carries its 61 bytes
+frozen for the same reason [`spcfast.py`](spcfast.py) does. Assembling
+[`asm/prefight-table.asm`](asm/prefight-table.asm) with `python3 build.py asm/prefight-table.asm
+<a rom> prefight-out.sfc` puts the assembler's own output beside it, and `prefight.test.py` compares
+the two byte for byte when that file is present and skips when it is not.
 
 **The sound patch against its own source.** [`spcfast.py`](spcfast.py) carries the sound patch as
 frozen byte runs rather than calling the assembler, which keeps the build independent of a toolchain
@@ -1431,9 +2075,60 @@ dark frames than retail is the warning sign.
 The metric proves the game keeps drawing. It does not prove the images are right, which is what the
 block integrity and lookup miss checks are for.
 
+### Every gate above was self-referential, and a player found what they could not
+
+A user played the chip-free image and reported jagged colour beside the character portraits in the
+attract sequence. Every check in this document passed on that build. All of them, and none of them
+could have caught it, because each one verified the stream table against itself: decompress each entry
+to the length the table records, compare with the same table, confirm every lookup resolves. A stream
+the table never knew about is invisible to all of that.
+
+The mechanism is worse than a missing entry. The lookup scans forward for a matching bank, up to a
+budget of 64, and the measured worst distance in both regions is 31. So a request for an address the
+table lacks does not fail; it lands on a **neighbouring entry**. There is no miss to count. The game
+reads what the neighbour left there, which for a never-written region is zeros, and draws garbage.
+
+What was missing was an **external** oracle, and the cartridge is one: run the real chip in the same
+emulator and log what it is actually asked for. `SFVRAMDMA` prints the source, size and destination of
+every transfer into video memory, and on the cartridge the chip decides what a stream is, not us.
+
+| region | distinct chip sources, attract plus 18 fighters | absent from the table | shorter than asked |
+|---|---|---|---|
+| USA | 1,023 | **2** | 0 |
+| Japan | 1,294 | **0** | 0 |
+
+The two are `0x19F8FE` at 256 bytes, requested 108 times, and `0x1BED29` at 64 bytes, requested 12
+times, which supplies four tiles beside the portraits. They live in
+[`usastreams.py`](usastreams.py) as `HARVESTED`, kept separate from the frozen `TAGGED` set so the
+provenance of each half stays visible and the tagged half can still be regenerated and checked.
+
+Confirming a fix needs the same external standard, and this is the check worth keeping: run both
+cartridge forms to the same scene and compare video memory, palette and sprite table byte for byte.
+Before, at the frame in question, **128 of 65,536 bytes of video memory differed**, in two runs of 64 at
+`0x0D400` and `0x0D600`, four tiles. After, **zero**, with the palette identical too.
+
+Two of the offline checks were also region-blind and had to be fixed before any of this could be
+trusted. [`tools/verify_image.py`](tools/verify_image.py) hardcoded the Japanese table and the Japanese
+retail ROM, so it had never validated a USA image once, and handed one it would have compared USA bytes
+against Japanese entries and reported a number rather than an error. [`mapcheck.py`](mapcheck.py) used
+the Japanese table whatever ROM it was given. Both now take the region from the file they are handed.
+
+The same tool had a third blind spot, found later and worth recording beside the other two. It
+decompressed from the raw retail ROM, while the build feeds `rombuild` a ROM that `gamefixes` has
+already patched. The moment a fix changed what a stream decodes to, which the Sodom rename does, the
+check reported a permanent mismatch that was not a defect. A gate that always reports one wrong stream
+is a gate nobody reads, and the second wrong stream, the real one, would have been lost in it. It now
+applies the fixes for the variants that carry them, which is the `both` builds, and compares the `base`,
+`spc` and `sa` variants against the unpatched ROM they were actually built from.
+
+The lesson generalises past this project. A verification loop that closes on its own inputs measures
+consistency, not truth, and it will stay green for years. The only thing that broke it here was
+comparing against something outside the loop, and the person who did that first was a player looking at
+the screen.
+
 ---
 
-## 18. The one thing no test settles
+## 20. The one thing no test settles
 
 **TL;DR.** Whether the Japanese stream table is complete. Every other property of the build is checked
 by something; this one cannot be, and the reason is worth understanding.
@@ -1454,7 +2149,7 @@ every recorded request, is kept in the repository rather than thrown away once t
 
 ---
 
-## 19. Lessons
+## 21. Lessons
 
 **TL;DR.** Measure before you build. Disassemble what the assembler actually emitted. And when two
 things that ought to differ come out identical, the bug is somewhere you are not looking.
@@ -1496,7 +2191,7 @@ files already knew what they were. It took a tool that had to decide without bei
 
 ---
 
-## 20. Upstream contributions
+## 22. Upstream contributions
 
 **TL;DR.** One change is genuinely needed by anyone who wants to run these images. I raised it as
 [snes9x issue 1081](https://github.com/snes9xgit/snes9x/issues/1081), and it was merged as
@@ -1521,11 +2216,12 @@ original ROM in several places and correcting only the two documented positions 
 find a dishonest one. With that done snes9x stops choosing `Map_SDD1LoROMMap`.
 
 **The layout is unknown to snes9x.** With an honest header it falls through to `Map_JumboLoROMMap`,
-which is a different layout, and still renders nothing. The mapping these conversions need is the one
-described in section 6, including the window rule for banks `$C0` and above, which cannot be expressed
-with the existing `map_lorom` and `map_hirom_offset` helpers. That layout is not a guess about what an
+which is a different layout, and still renders nothing. What these conversions need is a **windowed
+LoROM** map, section 8: two half-bank planes, with banks `$C0` and above aliased onto the second one
+instead of owning storage. That window cannot be expressed with the existing `map_lorom` and
+`map_hirom_offset` helpers, which is the whole of the request. That layout is not a guess about what an
 emulator ought to accept: an image built to it runs on a Game Doctor SF7 and on an FXPAK Pro, which is
-section 17.
+section 19.
 
 The detection has to sit above the HiROM and LoROM split, not inside the LoROM chain beside
 `Map_SDD1LoROMMap`. I put it in the obvious place first and the USA image worked, which is exactly how
@@ -1582,6 +2278,18 @@ instrument is gated behind an environment variable and is inert without it.
 | `SFGRID`, `SFSETTLE` | sweep the character roster, one slot per interval |
 | `SFTOUR`, `SFTOURBUDGET`, `SFTOURROSTER`, `SFTOURCOLUMNS` | reset between characters and play each one in turn, walking the select grid |
 | `SFTICK` | print the frame loop's own counters, the sound chip's program counter and port zero, periodically |
+| `SFGROUP` | report the sample engine's group walk: the three group ids, the allocation pointer, the directory index and the list id at every step |
+| `SFIDLE` | hold every button released, so the attract cycle runs instead of being skipped |
+| `SFWATCH` | print the frame and program counter every time a named address is read |
+| `SFPOKE` | print the frame and program counter every time a named work RAM address is written |
+| `SFPOKELEN` | widen `SFPOKE` from one address to a run |
+| `SFVRAMDMA` | print the source, size and destination of every transfer into video memory, which on the cartridge is what the chip was actually asked for |
+| `SFRECLAIM` | load the reclaimed spans and report any read that lands inside one |
+| `SFSCENE`, `SFSCENEMENU`, `SFSCENEVARIANT`, `SFSCENEJUMP` | force a matchup by character id, drive into the fight, then jump and attack with each button in turn |
+| `SFSCENECONTINUE` | keep pressing start and confirm after the fight begins, so the continue prompt, the game over screen and the post-match statistics screen are reachable instead of being sat in front of |
+| `SFWRITE` | write work RAM before every frame, as `addr:value` pairs, two hex digits for a byte and four for a little-endian word. `SFWRITE=1b09:4a4b` sets the Shin Akuma flag, `SFWRITE=07a2:05,0a22:0b` forces both fighters |
+| `SFTABLE` | count the writes that build the pre-fight table, and how many frames carry them |
+| `SFVLINE`, `SFVLINEAT`, `SFVLINEPC` | sample the scanline counter when a named address is touched from a named instruction |
 | `SFRING`, `SFREADRING`, `SFRINGSKIP` | keep the last 512 accesses with the program counter that made each, and skip named counter ranges |
 | `SFWRAM`, `SFWRAMMAP` | dump work RAM, or report every region the console never touches |
 | `SFHASH` | a hash of every frame, for comparing two runs |
@@ -1607,7 +2315,7 @@ Two of them I had to fix after they distorted my own results, which is at the en
 
 ### Playing it by hand, with the chip watching
 
-Scripted input is a poor explorer of a fighting game, and the numbers in section 15 say so: a few
+Scripted input is a poor explorer of a fighting game, and the numbers in section 17 say so: a few
 minutes of a person playing found more streams than every driver I wrote. So the instrumentation also
 runs under a frontend a human can use. A small SDL frontend drives the same libretro core, and a second
 build of that core logs every DMA to stderr, which makes an ordinary play session a recording session.
@@ -1629,7 +2337,7 @@ is the SDL one instead, which is a few hundred lines and entirely under control.
 
 ---
 
-## 21. Reproducing this
+## 23. Reproducing this
 
 **TL;DR.** Everything here rebuilds from your own ROMs with Docker and Python 3. No ROM data is
 distributed.
@@ -1693,7 +2401,8 @@ file by sha256 before compiling. Both run with no network access as a non-root u
 ```
 python3 spcfast.py    roms/sfa2-usa-final.sfc  build/step1.sfc     # faster sample upload
 python3 shinakuma.py  build/step1.sfc          build/step2.sfc     # unlock Shin Akuma
-python3 build.py      asm/sdd1-bypass.asm build/step2.sfc bypass.sfc
+python3 gamefixes.py  build/step2.sfc          build/step3.sfc     # the small corrections
+python3 build.py      asm/sdd1-bypass.asm build/step3.sfc bypass.sfc
 python3 rombuild.py   asm/bypass.sfc roms/sfa2-usa-vc-sound-restored.sfc build/nochip.sfc
 python3 header.py     build/nochip.sfc build/final.sfc             # declare it honestly
 
@@ -1737,21 +2446,22 @@ python3 tools/tour_audio.py both-free           # every fighter, checked for cor
 ```
 
 The first reports duplicate sources, streams that fail to decode, and the worst key-scan distance. The
-other three are section 17. A table that passes all of them can still be incomplete, which is what
-section 15 is about, but one that fails any of them is definitely broken.
+other three are section 19. A table that passes all of them can still be incomplete, which is what
+section 17 is about, but one that fails any of them is definitely broken.
 
 ### Running the tests
 
 ```
-for t in *.test.py; do python3 "$t" || break; done
+for t in *.test.py tools/*.test.py; do python3 "$t" || break; done
 ```
 
-19 modules, 281 tests. Several require the retail ROMs and skip cleanly without them.
+32 modules, 478 tests, 26 beside the analysis modules and 6 beside the tools. Several require the retail
+ROMs and skip cleanly without them.
 
 ### Reproducing the measurements
 
 Every figure in this document comes from the instrumented emulator, and each instrument is gated behind
-the environment variable listed in section 20. For example, the pre-fight pause is the longest run of
+the environment variable listed in section 22. For example, the pre-fight pause is the longest run of
 consecutive frames with heavy APU port traffic:
 
 ```
@@ -1759,19 +2469,19 @@ docker run --rm --network=none -e SFAPU=1 -v "$PWD:/work" \
   sf-decompressed/sfemu:snes9x-1.63 build/final.sfc 12000 -2
 ```
 
-The third argument selects the memory map: `-1` is stock, `-2` installs the Game Doctor mapping needed
+The third argument selects the memory map: `-1` is stock, `-2` installs the windowed LoROM mapping needed
 for a 96 Mbit image.
 
 ---
 
-## 22. Repository guide
+## 24. Repository guide
 
 **TL;DR.** Analysis modules with tests beside them, assembly that goes into the ROM, and a pinned
 container for each toolchain.
 
 | file | role |
 |------|------|
-| [`romtools.py`](romtools.py) | copier headers, Game Doctor part joining |
+| [`romtools.py`](romtools.py) | copier headers, joining Game Doctor `.078` parts |
 | [`analyse.py`](analyse.py) | compression ratios and chunk indexing |
 | [`sdd1.py`](sdd1.py) | the S-DD1 decompressor |
 | [`sdd1ref.py`](sdd1ref.py) | differential test against the C reference |
@@ -1792,6 +2502,9 @@ container for each toolchain.
 | [`patchrun.py`](patchrun.py) | executes the assembled patch against a memory model |
 | [`spcfast.py`](spcfast.py) | applies the sample upload patch |
 | [`shinakuma.py`](shinakuma.py) | applies the Shin Akuma unlock |
+| [`gamefixes.py`](gamefixes.py) | applies the small corrections in section 15 |
+| [`prefight.py`](prefight.py) | computes the pre-fight table and redirects both of the builder's callers |
+| [`repeatload.py`](repeatload.py) | applies the skip for a sample list that is already loaded |
 | [`build.py`](build.py) | Docker wrapper around asar |
 | [`gate.py`](gate.py) | the checks an image must pass before it is written |
 | [`requests_jp.py`](requests_jp.py) | decompression requests recorded from working hardware |
@@ -1804,12 +2517,16 @@ needed to reproduce the measurements in this document.
 | file | what it does |
 |------|--------------|
 | [`tools/rebuild_all.py`](tools/rebuild_all.py) | builds every region, patch set and cartridge form, sixteen images |
-| [`tools/validate_all.py`](tools/validate_all.py) | runs all sixteen for 12,000 frames and prints the table in section 17 |
+| [`tools/validate_all.py`](tools/validate_all.py) | runs all sixteen for 12,000 frames and prints the table in section 19 |
 | [`tools/verify_streams.py`](tools/verify_streams.py) | every stream through snes9x's own decompressor, compared with the Python one |
 | [`tools/verify_image.py`](tools/verify_image.py) | walks the finished image's lookup tables the way the console does |
 | [`tools/freeze_spcfast.py`](tools/freeze_spcfast.py) | keeps the frozen sound patch in step with its assembly |
 | [`tools/tour_oracle.py`](tools/tour_oracle.py) | drives the retail cartridge and records what it asks the chip for |
 | [`tools/tour_audio.py`](tools/tour_audio.py) | plays every fighter in turn and reports any corrupt upload or wedged frame loop |
+| [`tools/sample_reuse.py`](tools/sample_reuse.py) | replays every sample upload against a shadow of sound RAM and reports what was already resident |
+| [`tools/stage_diff.py`](tools/stage_diff.py) | drives two builds through every matchup on the same input and reports which frames differ, which is how a change is located rather than guessed at |
+| [`emu/play.cpp`](emu/play.cpp) | interactive SDL2 frontend, the only way to actually play a 96 Mbit image |
+| [`emu/windowed_lorom.cpp`](emu/windowed_lorom.cpp) | the windowed LoROM map, shared by the harness and the player |
 | [`tools/harvest_jp.py`](tools/harvest_jp.py) | proposes stream candidates from a converted build, for the gate to judge |
 | [`tools/converge_jp.py`](tools/converge_jp.py) | the loop that ran those two until a round found nothing new |
 | [`tools/identify.py`](tools/identify.py) | checks the cartridge dumps against their published digests |
@@ -1823,7 +2540,8 @@ recovered it, and the recorded requests they produced, are kept as well: if a sc
 ever turns out to be wrong, the same loop is pointed at it and the table grows again.
 
 Assembly that goes into the ROM lives in [`asm/`](asm/): the bypass patches for both regions, the shared
-translate routine, the sample upload patch, and the Shin Akuma unlock for both regions.
+translate routine, the sample upload patch, the repeated load skip, the pre-fight table loader, and the
+Shin Akuma unlock for both regions.
 
 Both disassemblers had their opcode tables extracted programmatically from reference implementations
 rather than typed, and both are validated against known listings.
@@ -1839,11 +2557,11 @@ gets reverted to a known-good point instead of debugged under pressure. Those sn
 machine and are not in this repository, because most of their bulk is built ROM images. The states are
 the lean receive loop, two bytes per handshake, three bytes per handshake, and the honest header.
 
-Run the tests with `python3 <module>.test.py`. All 27 modules, 355 tests.
+Run the tests with `python3 <module>.test.py`. All 32 modules, 478 tests.
 
 ---
 
-## 23. Acknowledgements
+## 25. Acknowledgements
 
 This project is assembled almost entirely out of other people's work. Naming them is not a courtesy, it
 is an accurate description of where the parts came from.
@@ -1880,7 +2598,7 @@ decompressor is tested against.
 
 ---
 
-## 24. References
+## 26. References
 
 - Modern Vintage Gamer, [A closer look at Street Fighter Alpha 2 on the Super Nintendo](https://www.youtube.com/watch?v=fB9GlZUYNUQ)
 - [Street Fighter Alpha 2 thread on Zeldix](https://www.zeldix.net/t1831-street-fighter-alpha-2), gizaha's patches and changelog
