@@ -15,6 +15,9 @@ def load(name):
 
 spcfast = load("spcfast")
 shinakuma = load("shinakuma")
+gamefixes = load("gamefixes")
+repeatload = load("repeatload")
+prefight = load("prefight")
 rombuild = load("rombuild")
 romtools = load("romtools")
 header = load("header")
@@ -32,7 +35,7 @@ def variants(retail):
         "base": retail,
         "spc": fast,
         "sa": shinakuma.apply(retail),
-        "both": shinakuma.apply(fast),
+        "both": repeatload.apply(gamefixes.apply(shinakuma.apply(fast))),
     }
 
 
@@ -64,6 +67,16 @@ def assemble(region, name, cart):
     return target
 
 
+PREFIGHT_VARIANT = "both"
+
+
+def image_source(name, bypass):
+    rom = romtools.load(bypass)
+    if name != PREFIGHT_VARIANT:
+        return rom, ()
+    return prefight.apply(rom), ((prefight.TABLE_ADDRESS, prefight.table()),)
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for region, path in RETAIL.items():
@@ -71,7 +84,8 @@ def main():
         entries = entries_for(region)
         for name, cart in variants(retail).items():
             bypass = assemble(region, name, cart)
-            image = rombuild.build(romtools.load(bypass), entries).image
+            source, extra = image_source(name, bypass)
+            image = rombuild.build(source, entries, extra=extra).image
             free = OUT / f"{region}-{name}-free.sfc"
             free.write_bytes(header.declare_no_coprocessor(image))
             print(f"  {region}-{name}: cart, bypass, free ({len(entries)} streams)", flush=True)

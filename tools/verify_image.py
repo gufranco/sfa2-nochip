@@ -16,6 +16,8 @@ sdd1 = load("sdd1")
 romtools = load("romtools")
 layout = load("layout")
 jpstreams = load("jpstreams")
+usastreams = load("usastreams")
+gamefixes = load("gamefixes")
 
 WINDOW_BASE = 0xC0
 TABLE_BANK = 0x60
@@ -39,15 +41,31 @@ def resolve(image, banks, source):
     return None, None
 
 
+def carries_game_fixes(path):
+    return "-both-" in Path(path).name.lower()
+
+
+def region_of(path):
+    name = Path(path).name.lower()
+    if name.startswith("jp-") or "sfz2" in name:
+        return jpstreams.STREAMS, ROOT / "roms" / "sfz2-jp-final.sfc"
+    if name.startswith("usa-") or "sfa2" in name:
+        return usastreams.STREAMS, ROOT / "roms" / "sfa2-usa-final.sfc"
+    raise ValueError(f"cannot tell which region {name} belongs to")
+
+
 def main(argv):
     image_path = Path(argv[1]) if len(argv) > 1 else ROOT / "build" / "all" / "jp-both-free.sfc"
-    retail = romtools.load(ROOT / "roms" / "sfz2-jp-final.sfc")
+    streams, retail_path = region_of(image_path)
+    retail = romtools.load(retail_path)
+    if carries_game_fixes(image_path):
+        retail = gamefixes.apply(retail)
     image = romtools.load(image_path)
     banks = len(image) // layout.BANK
 
     wrong = []
     unresolved = []
-    for source, length in jpstreams.STREAMS:
+    for source, length in streams:
         destination, _ = resolve(image, banks, source)
         if destination is None:
             unresolved.append(source)
@@ -61,7 +79,7 @@ def main(argv):
             first = next(i for i, (a, b) in enumerate(zip(got, want, strict=True)) if a != b)
             wrong.append((source, destination, first))
 
-    print(f"  image {image_path.name}, {len(jpstreams.STREAMS):,} streams")
+    print(f"  image {image_path.name}, {len(streams):,} streams")
     print(f"  unresolved lookups: {len(unresolved)}")
     for source in unresolved[:10]:
         print(f"     {source:#08x}")
