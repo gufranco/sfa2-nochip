@@ -407,13 +407,25 @@ arch 65816
 !KIND_SITE = $0E846D             ; CPU $C7:046D, the kind byte the header posts
 !DATA_ENTRY = $0E8488            ; CPU $C7:0488, the stock data-phase stub
 !PAIR_ROUTINE = $0E84EB          ; CPU $C7:04EB, filler the sender is built in
-!PRIVATE_STACK = $1FE0           ; the transfer's own stack. $1F3E to $1FE1 is
-                                 ; the larger of the two runs in the low 8K that
-                                 ; the console never reads and never writes
-                                 ; across a run of all eighteen fighters, on the
-                                 ; cartridge build and on the chip-free one, and
-                                 ; this is its top. The scheduler's own stack
-                                 ; sits above it and is idle while a task runs.
+!PRIVATE_STACK = $1FE0           ; the transfer's own stack, and its top. The
+                                 ; scheduler's own stack sits above it and is
+                                 ; idle while a task runs.
+                                 ;
+                                 ; The run $1F3E to $1FE1 was chosen because a
+                                 ; region survey named it untouched in both
+                                 ; directions across a tour of all eighteen
+                                 ; fighters. A later write watch, added for the
+                                 ; repeated load skip, shows that is not quite
+                                 ; true: game code writes $1F3E 432 times from
+                                 ; four sites in bank $C0, and $1FC6 7,888 times
+                                 ; from $C0:01DA. Both ends of the run are live
+                                 ; and only the inside is free.
+                                 ;
+                                 ; This stack is clear of both, and by counting
+                                 ; rather than by luck. It parks six words and
+                                 ; makes one local call, so the deepest it ever
+                                 ; reaches is $1FD2, fourteen bytes below its
+                                 ; top. $1FC6 is twelve bytes below that.
                                  ;
                                  ; A direct page was tried here first and is the
                                  ; wrong instrument: code that runs inside the

@@ -70,7 +70,9 @@ PATCH = (
     (0x072B55, bytes.fromhex("e4")),
     (
         0x072B57,
-        bytes.fromhex("ebf7da14ebf4e4f5c4e6cbf46800f0172faa1a14baf67a14dac87af6daca8d00cb"),
+        bytes.fromhex(
+            "ebf7da14ebf4e4f5c4e6cbf46800f0172faa1a14baf67a14dac87af6daca8d00cb"
+        ),
     ),
     (0x072B79, bytes.fromhex("fc2fb6")),
 )
