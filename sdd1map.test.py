@@ -1,7 +1,16 @@
 import importlib.util
 import itertools
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+sdd1 = hardware.load("sdd1")
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -14,8 +23,6 @@ def load_module(name):
 
 
 sdd1map = load_module("sdd1map")
-sdd1 = load_module("sdd1")
-romtools = load_module("romtools")
 
 TAGGED = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
 RETAIL = ROOT / "roms" / "sfa2-usa-final.sfc"
@@ -90,8 +97,8 @@ class BuildMapTest(unittest.TestCase):
 class RealMapTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tagged = romtools.load(TAGGED)
-        cls.retail = romtools.load(RETAIL)
+        cls.tagged = dump.read(TAGGED)
+        cls.retail = dump.read(RETAIL)
         cls.entries = sdd1map.build_map(cls.tagged)
 
     def test_the_patched_rom_carries_one_marker_per_stream(self):

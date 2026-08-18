@@ -1,6 +1,15 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+wdc65816 = hardware.load("mos65xx")
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -13,8 +22,6 @@ def load_module(name):
 
 
 shinakuma = load_module("shinakuma")
-wdc65816 = load_module("wdc65816")
-romtools = load_module("romtools")
 
 USA = ROOT / "roms" / "sfa2-usa-final.sfc"
 JP = ROOT / "roms" / "sfz2-jp-final.sfc"
@@ -155,8 +162,8 @@ class DisassemblyTest(unittest.TestCase):
 class RetailRomTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.usa = romtools.load(USA)
-        cls.jp = romtools.load(JP)
+        cls.usa = dump.read(USA)
+        cls.jp = dump.read(JP)
 
     def test_the_gate_is_present_exactly_once_in_each_region(self):
         self.assertEqual(shinakuma.find_gate(self.usa), 0x00EC6E)

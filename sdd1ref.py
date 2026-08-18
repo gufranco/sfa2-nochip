@@ -4,8 +4,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import romtools as rt
-import sdd1
+
+import hardware
+
+dump = hardware.load("romimage").dump
+sdd1 = hardware.load("sdd1")
+
 
 ROOT = Path(__file__).resolve().parent
 REF_DIR = ROOT / "ref"
@@ -99,7 +103,7 @@ def main():
         print("usage: sdd1ref.py <rom> [cases] [seed]", file=sys.stderr)
         return 2
 
-    rom = rt.load(sys.argv[1])
+    rom = dump.read(sys.argv[1])
     count = int(sys.argv[2]) if len(sys.argv) > 2 else 500
     seed = int(sys.argv[3]) if len(sys.argv) > 3 else 20260813
 

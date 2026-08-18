@@ -5,6 +5,13 @@ import sys
 import textwrap
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 RETAIL = {
@@ -22,9 +29,6 @@ def load(name):
     return module
 
 
-romtools = load("romtools")
-
-
 def assemble(region):
     output = f"probe-{region}.sfc"
     subprocess.run(
@@ -33,7 +37,7 @@ def assemble(region):
         check=True,
         capture_output=True,
     )
-    return romtools.load(ROOT / "asm" / output)
+    return dump.read(ROOT / "asm" / output)
 
 
 def differing_runs(before, after):
@@ -146,7 +150,7 @@ def main(argv):
 
     assembled = {region: assemble(region) for region in RETAIL}
     runs = {
-        region: differing_runs(romtools.load(RETAIL[region]), image)
+        region: differing_runs(dump.read(RETAIL[region]), image)
         for region, image in assembled.items()
     }
 
@@ -179,7 +183,7 @@ def main(argv):
 
     spcfast = load("spcfast")
     for region, image in assembled.items():
-        if spcfast.apply(romtools.load(RETAIL[region])) != image:
+        if spcfast.apply(dump.read(RETAIL[region])) != image:
             print(
                 f"  {region}: spcfast.py does not reproduce what the assembler produces",
                 file=sys.stderr,

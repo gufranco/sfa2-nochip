@@ -116,7 +116,7 @@ graph LR
     D --> E["build.py + asar<br/>redirect the seven sites"]
     E --> P["4 MB patched cartridge<br/>chip still required"]
     E --> F["rombuild.py<br/>decompress, lay out, index"]
-    F --> G["header.py<br/>declare it honestly"]
+    F --> G["declare it<br/>honestly"]
     G --> H["96 Mbit image<br/>no chip"]
 ```
 
@@ -188,7 +188,7 @@ space by adding linear banks; this one aliases a region onto a second storage pl
 the single property that separates it from ExLoROM, ExHiROM and Jumbo LoROM. The rule comes from
 neviksti's Star Ocean chip-free conversion, recovered here by inspection.
 
-[`layout.py`](layout.py) implements both directions:
+The cartridge-map package implements both directions:
 
 ```python
 def snes_to_file(bank, addr, banks):
@@ -344,7 +344,7 @@ python3 shinakuma.py  build/step1.sfc          build/step2.sfc   # unlock
 python3 gamefixes.py  build/step2.sfc          build/step3.sfc   # the corrections
 python3 build.py      asm/sdd1-bypass.asm build/step3.sfc bypass.sfc
 python3 rombuild.py   asm/bypass.sfc roms/sfa2-usa-vc-sound-restored.sfc build/nochip.sfc
-python3 header.py     build/nochip.sfc build/final.sfc           # declare it honestly
+python3 -c 'import hardware, pathlib; r = hardware.load("romimage"); pathlib.Path("build/final.sfc").write_bytes(r.rewrite.declare_rom_only(r.dump.read("build/nochip.sfc")))'
 ```
 
 Order matters. The sample and unlock patches apply to the retail ROM, the bypass has to come before the
@@ -434,7 +434,7 @@ branch of a fork.
 
 Two things had to be fixed. Circulating chip-free conversions keep the retail header, so they claim a
 chip they no longer contain, and an emulator matching on that enables chip emulation and applies the
-wrong layout. [`header.py`](header.py) rewrites the chipset and size fields at all six places the header
+wrong layout. The image package rewrites the chipset and size fields at all six places the header
 appears in these images, since the original ROM is mirrored into the window banks and the FastROM
 mirror, and correcting only the two documented positions leaves a dishonest copy for the scoring to
 find. With an honest header the remaining problem is that the layout itself is unknown, which is what
@@ -445,6 +445,29 @@ each would need building and running against both conversions first.
 
 ---
 
+## The hardware this is checked against
+
+```bash
+git clone --recurse-submodules https://github.com/gufranco/street-fighter-alpha-2-nochip.git
+```
+
+The models this project measures itself against are not written here. Each is its own repository,
+pinned as a submodule under [`emulators/`](emulators/), and each is held to something outside itself
+rather than to its author's confidence.
+
+| model | what proves it |
+|---|---|
+| [65816](https://github.com/gufranco/mos65xx-python) | a per-opcode suite, 5,120,000 cases |
+| [SPC700](https://github.com/gufranco/sony-spc700-python) | a per-opcode suite, 256,000 cases |
+| [S-DD1](https://github.com/gufranco/snes-sdd1-python) | the chip's own reference implementation |
+| [S-DSP](https://github.com/gufranco/sony-s-dsp-python) | the mixer's own reference implementation |
+| [cartridge map](https://github.com/gufranco/snes-mapper-python) | every header combination in a real cartridge library |
+| [ROM image](https://github.com/gufranco/snes-rom-image-python) | the whole of that same library, rewritten and checked |
+
+They also start dirty. Memory and registers hold arbitrary but reproducible values rather than
+zeroes, because real hardware does, and anything here that wants a cleared machine has to ask for
+one. That turns a read of something never written from an accident into a question.
+
 ## Repository guide
 
 Analysis modules in Python, each with its tests beside it, assembly that goes into the ROM, and a pinned
@@ -452,7 +475,6 @@ container per toolchain.
 
 | file | role |
 |------|------|
-| [`sdd1.py`](sdd1.py) | the S-DD1 decompressor |
 | [`sdd1ref.py`](sdd1ref.py) | differential test against the C reference |
 | [`sdd1map.py`](sdd1map.py) | stream table extraction from a tagged ROM |
 | [`sdd1find.py`](sdd1find.py) | content search for streams |
@@ -461,9 +483,7 @@ container per toolchain.
 | [`usastreams.py`](usastreams.py) | the USA stream table |
 | [`jpstreams.py`](jpstreams.py) | the Japanese stream table |
 | [`requests_jp.py`](requests_jp.py) | decompression requests recorded from working hardware |
-| [`layout.py`](layout.py) | the windowed LoROM address arithmetic |
 | [`rombuild.py`](rombuild.py) | assembles the 96 Mbit image |
-| [`header.py`](header.py) | makes a converted image declare itself honestly |
 | [`mapcheck.py`](mapcheck.py) | validates a stream table offline |
 | [`gate.py`](gate.py) | the checks an image must pass before it is written |
 | [`pack.py`](pack.py) | builds the release images, named with the version |
@@ -472,11 +492,9 @@ container per toolchain.
 | [`shinakuma.py`](shinakuma.py) | applies the Shin Akuma unlock |
 | [`gamefixes.py`](gamefixes.py) | applies the corrections |
 | [`prefight.py`](prefight.py) | computes the pre-fight table and redirects both of the builder's callers |
-| [`wdc65816.py`](wdc65816.py) | 65816 disassembler with M and X width tracking |
-| [`spc700.py`](spc700.py) | SPC700 disassembler |
-| [`emu65816.py`](emu65816.py) | minimal 65816 interpreter |
 | [`patchrun.py`](patchrun.py) | executes the assembled patch against a memory model |
-| [`romtools.py`](romtools.py) | copier headers, joining Game Doctor `.078` parts |
+| [`hardware.py`](hardware.py) | puts the pinned hardware models on the import path |
+| [`emulators/`](emulators/) | those models, each its own repository, each held to its own oracle |
 | [`analyse.py`](analyse.py) | compression ratios and chunk indexing |
 | [`build.py`](build.py) | Docker wrapper around asar |
 | [`version.py`](version.py) | the release number, rewritten by [`scripts/set-version.sh`](scripts/set-version.sh) |

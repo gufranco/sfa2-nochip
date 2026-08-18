@@ -3,14 +3,18 @@ from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import layout
-import romtools as rt
-import sdd1
-import sdd1map
-import sdd1tables
+
+import hardware
+
+dump = hardware.load("romimage").dump
+mapper = hardware.load("mapper")
+sdd1 = hardware.load("sdd1")
+
+import sdd1map  # noqa: E402
+import sdd1tables  # noqa: E402
 
 IMAGE_BANKS = 192
-IMAGE_SIZE = IMAGE_BANKS * layout.BANK
+IMAGE_SIZE = IMAGE_BANKS * mapper.BANK
 
 TABLE_BANK = 0x60
 TABLE_COUNT = 4
@@ -27,7 +31,7 @@ ORIGINAL_SIZE = 0x400000
 MIN_REGION = 0x1000
 READ_AHEAD = 1
 
-FINAL_STREAM_LENGTH = layout.BANK
+FINAL_STREAM_LENGTH = mapper.BANK
 
 Region = namedtuple("Region", "bank start end")
 Result = namedtuple("Result", "image destinations tables regions")
@@ -55,7 +59,7 @@ def entries_from_map(mapping):
 def data_bank_regions():
     reserved = set(range(TABLE_BANK, TABLE_BANK + TABLE_COUNT)) | set(WRAM_BANKS)
     return [
-        Region(bank, 0x0000, layout.BANK)
+        Region(bank, 0x0000, mapper.BANK)
         for bank in range(DATA_BANK_FIRST, DATA_BANK_LAST + 1)
         if bank not in reserved
     ]
@@ -145,13 +149,13 @@ def allocate(sizes, regions):
 def place(image, bank, addr, data, banks):
     written = 0
     while written < len(data):
-        edge = layout.HALF if addr < layout.HALF else layout.BANK
+        edge = mapper.HALF if addr < mapper.HALF else mapper.BANK
         chunk = min(len(data) - written, edge - addr)
-        offset = layout.address_to_file(bank, addr, banks)
+        offset = mapper.address_to_file(bank, addr, banks)
         image[offset : offset + chunk] = data[written : written + chunk]
         written += chunk
         addr += chunk
-        if addr >= layout.BANK:
+        if addr >= mapper.BANK:
             addr = 0
             bank += 1
 
@@ -165,20 +169,20 @@ def build(rom, entries, image_banks=IMAGE_BANKS, extra=()):
     destinations = allocate([(e.index, e.length) for e in ordered], regions)
     tables = sdd1tables.build([(e, destinations[e.index]) for e in entries])
 
-    image = bytearray(image_banks * layout.BANK)
+    image = bytearray(image_banks * mapper.BANK)
 
     for bank in range(LOROM_BANKS):
-        source = bank * layout.HALF
-        half = rom[source : source + layout.HALF]
-        place(image, bank, layout.HALF, half, image_banks)
-        place(image, LOROM_MIRROR_BASE + bank, layout.HALF, half, image_banks)
+        source = bank * mapper.HALF
+        half = rom[source : source + mapper.HALF]
+        place(image, bank, mapper.HALF, half, image_banks)
+        place(image, LOROM_MIRROR_BASE + bank, mapper.HALF, half, image_banks)
 
-    for n in range(ORIGINAL_SIZE // layout.BANK):
+    for n in range(ORIGINAL_SIZE // mapper.BANK):
         place(
             image,
             WINDOW_BASE + n,
             0x0000,
-            rom[n * layout.BANK : (n + 1) * layout.BANK],
+            rom[n * mapper.BANK : (n + 1) * mapper.BANK],
             image_banks,
         )
 
@@ -209,8 +213,8 @@ def main():
         )
         return 2
 
-    rom = rt.load(sys.argv[1])
-    entries = load_entries(rt.load(sys.argv[2]))
+    rom = dump.read(sys.argv[1])
+    entries = load_entries(dump.read(sys.argv[2]))
     print(f"  streams   {len(entries):,}")
 
     result = build(rom, entries)

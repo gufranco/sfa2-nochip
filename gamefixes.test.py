@@ -1,6 +1,14 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+sdd1 = hardware.load("sdd1")
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -14,7 +22,6 @@ def load_module(name):
 
 gamefixes = load_module("gamefixes")
 spcfast = load_module("spcfast")
-sdd1 = load_module("sdd1")
 
 USA = ROOT / "roms" / "sfa2-usa-final.sfc"
 JP = ROOT / "roms" / "sfz2-jp-final.sfc"

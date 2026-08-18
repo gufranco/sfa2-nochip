@@ -1,7 +1,16 @@
 import importlib.util
 import random
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+sdd1 = hardware.load("sdd1")
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -14,8 +23,6 @@ def load_module(name):
 
 
 find = load_module("sdd1find")
-sdd1 = load_module("sdd1")
-romtools = load_module("romtools")
 
 ALPHA2 = ROOT / "roms" / "sfa2-usa-final.sfc"
 KNOWN_STREAM = 0x13C03B
@@ -69,7 +76,7 @@ class EntropyTest(unittest.TestCase):
 class FindStreamsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.rom = romtools.load(ALPHA2)
+        cls.rom = dump.read(ALPHA2)
         cls.output = sdd1.decompress(cls.rom, KNOWN_STREAM, KNOWN_LENGTH).data
 
     def build_reference(self, seed=1):

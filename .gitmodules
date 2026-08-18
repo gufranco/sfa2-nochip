@@ -1,0 +1,18 @@
+[submodule "emulators/mos65xx"]
+	path = emulators/mos65xx
+	url = https://github.com/gufranco/mos65xx-python.git
+[submodule "emulators/snes-sdd1"]
+	path = emulators/snes-sdd1
+	url = https://github.com/gufranco/snes-sdd1-python.git
+[submodule "emulators/sony-spc700"]
+	path = emulators/sony-spc700
+	url = https://github.com/gufranco/sony-spc700-python.git
+[submodule "emulators/snes-mapper"]
+	path = emulators/snes-mapper
+	url = https://github.com/gufranco/snes-mapper-python.git
+[submodule "emulators/sony-s-dsp"]
+	path = emulators/sony-s-dsp
+	url = https://github.com/gufranco/sony-s-dsp-python.git
+[submodule "emulators/snes-rom-image"]
+	path = emulators/snes-rom-image
+	url = https://github.com/gufranco/snes-rom-image-python.git

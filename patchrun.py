@@ -3,10 +3,14 @@ from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import emu65816
-import layout
-import rombuild
-import romtools as rt
+
+import hardware
+
+emu65816 = hardware.load("mos65xx")
+dump = hardware.load("romimage").dump
+mapper = hardware.load("mapper")
+
+import rombuild  # noqa: E402
 
 ENTRY_POINTS = {0x00: 0x35CD84, 0x10: 0x35CDD0, 0x70: 0x35CE1C}
 VARIABLE_ENTRY = 0x35CE68
@@ -34,9 +38,9 @@ class SnesMemory:
         bank, offset = address >> 16, address & 0xFFFF
         if bank in rombuild.WRAM_BANKS:
             return self.ram.get(address, 0x00)
-        if (bank < 0x40 or 0x80 <= bank < 0xC0) and offset < layout.HALF:
+        if (bank < 0x40 or 0x80 <= bank < 0xC0) and offset < mapper.HALF:
             return self.ram.get(address, 0x00)
-        return self.image[layout.address_to_file(bank, offset, self.banks)]
+        return self.image[mapper.address_to_file(bank, offset, self.banks)]
 
     def write8(self, address, value):
         self.ram[address] = value & 0xFF
@@ -50,6 +54,18 @@ def dma_source(snapshot, channel=0x00):
 
 
 def translate(memory, source, channel=0x00, entry=None, dmap=ARMED_DMAP, **registers):
+    """Run the translation the way the cartridge runs it, and read the result.
+
+    Native mode is not a detail. The processor powers on in emulation mode, where
+    the instruction that widens the accumulator and index registers is defined to
+    do nothing, and the routine's first act is to widen them. Left in emulation
+    mode it loads eight bits of a sixteen bit address, indexes with a register
+    that wraps at two hundred and fifty six, and scans forever without finding
+    what it is looking for.
+
+    The cartridge reaches this routine from native-mode code, so the harness has
+    to start where the caller does.
+    """
     base = DMA_BASE + channel
     memory.ram.clear()
     memory.ram[base] = dmap
@@ -58,6 +74,7 @@ def translate(memory, source, channel=0x00, entry=None, dmap=ARMED_DMAP, **regis
     memory.ram[base + 4] = WINDOW_BASE + (source >> 16)
 
     cpu = emu65816.Cpu(memory, step_limit=STEP_LIMIT)
+    cpu.emulation = False
     cpu.s = STACK_TOP
     cpu.m8 = True
     cpu.x8 = True
@@ -79,9 +96,9 @@ def main():
         )
         return 2
 
-    image = rt.load(sys.argv[1])
-    entries = rombuild.load_entries(rt.load(sys.argv[3]))
-    expected = rombuild.build(rt.load(sys.argv[2]), entries).destinations
+    image = dump.read(sys.argv[1])
+    entries = rombuild.load_entries(dump.read(sys.argv[3]))
+    expected = rombuild.build(dump.read(sys.argv[2]), entries).destinations
     memory = SnesMemory(image)
 
     failures = 0

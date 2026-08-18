@@ -1,6 +1,14 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -14,7 +22,6 @@ def load_module(name):
 
 sites = load_module("sdd1sites")
 sdd1map = load_module("sdd1map")
-romtools = load_module("romtools")
 
 RETAIL = ROOT / "roms" / "sfa2-usa-final.sfc"
 TAGGED = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
@@ -76,8 +83,8 @@ class RegisterScanTest(unittest.TestCase):
 class RealRomTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.rom = romtools.load(RETAIL)
-        entries = sdd1map.build_map(romtools.load(TAGGED))
+        cls.rom = dump.read(RETAIL)
+        entries = sdd1map.build_map(dump.read(TAGGED))
         cls.mask = sites.compressed_mask(cls.rom, entries)
         cls.found = sites.find_register_writes(cls.rom, cls.mask)
 

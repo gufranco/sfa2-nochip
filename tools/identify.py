@@ -1,11 +1,15 @@
-import hashlib
 import sys
-import zlib
 from collections import namedtuple
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ROMS = ROOT / "roms"
+
+sys.path.insert(0, str(ROOT))
+
+import hardware  # noqa: E402
+
+identity = hardware.load("romimage").identity
 
 Identity = namedtuple("Identity", "size crc32 md5 sha1 sha256")
 
@@ -44,13 +48,7 @@ COPIER_HEADER = 512
 
 
 def digests(data):
-    return Identity(
-        size=len(data),
-        crc32=f"{zlib.crc32(data) & 0xFFFFFFFF:08X}",
-        md5=hashlib.md5(data).hexdigest(),
-        sha1=hashlib.sha1(data).hexdigest(),
-        sha256=hashlib.sha256(data).hexdigest(),
-    )
+    return Identity(**identity.measure(data))
 
 
 def verdict(wanted, found):

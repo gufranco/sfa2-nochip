@@ -4,8 +4,12 @@ from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import romtools as rt
-import sdd1
+
+import hardware
+
+dump = hardware.load("romimage").dump
+sdd1 = hardware.load("sdd1")
+
 
 MARKER = b"SDD1"
 MARKER_SIZE = 8
@@ -85,8 +89,8 @@ def main():
         )
         return 2
 
-    tagged = rt.load(sys.argv[1])
-    rom = rt.load(sys.argv[2])
+    tagged = dump.read(sys.argv[1])
+    rom = dump.read(sys.argv[2])
     entries = build_map(tagged)
     if not entries:
         print("no S-DD1 markers found", file=sys.stderr)

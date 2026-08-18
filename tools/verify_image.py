@@ -2,6 +2,15 @@ import importlib.util
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+mapper = hardware.load("mapper")
+sdd1 = hardware.load("sdd1")
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -12,9 +21,6 @@ def load(name):
     return module
 
 
-sdd1 = load("sdd1")
-romtools = load("romtools")
-layout = load("layout")
 jpstreams = load("jpstreams")
 usastreams = load("usastreams")
 gamefixes = load("gamefixes")
@@ -25,7 +31,7 @@ SCAN_BUDGET = 64
 
 
 def window_read(image, banks, bank, address):
-    return image[layout.address_to_file(bank, address, banks)]
+    return image[mapper.address_to_file(bank, address, banks)]
 
 
 def resolve(image, banks, source):
@@ -57,11 +63,11 @@ def region_of(path):
 def main(argv):
     image_path = Path(argv[1]) if len(argv) > 1 else ROOT / "build" / "all" / "jp-both-free.sfc"
     streams, retail_path = region_of(image_path)
-    retail = romtools.load(retail_path)
+    retail = dump.read(retail_path)
     if carries_game_fixes(image_path):
         retail = gamefixes.apply(retail)
-    image = romtools.load(image_path)
-    banks = len(image) // layout.BANK
+    image = dump.read(image_path)
+    banks = len(image) // mapper.BANK
 
     wrong = []
     unresolved = []

@@ -3,6 +3,14 @@ import statistics
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+sdd1 = hardware.load("sdd1")
+
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -13,9 +21,7 @@ def _load(name):
     return module
 
 
-sdd1 = _load("sdd1")
 sdd1tables = _load("sdd1tables")
-romtools = _load("romtools")
 jpstreams = _load("jpstreams")
 usastreams = _load("usastreams")
 
@@ -90,7 +96,7 @@ def scan_cost(entries):
 
 
 def report(rom_path):
-    rom = romtools.load(Path(rom_path))
+    rom = dump.read(Path(rom_path))
     entries = load(table_for(rom_path))
 
     repeated = duplicate_sources(entries)

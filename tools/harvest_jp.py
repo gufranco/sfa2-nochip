@@ -4,6 +4,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+rewrite = hardware.load("romimage").rewrite
+sdd1 = hardware.load("sdd1")
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -14,10 +23,7 @@ def load(name):
     return module
 
 
-sdd1 = load("sdd1")
-romtools = load("romtools")
 rombuild = load("rombuild")
-header = load("header")
 spcfast = load("spcfast")
 shinakuma = load("shinakuma")
 
@@ -64,13 +70,13 @@ def build_image(cart, table, name):
         capture_output=True,
     )
     produced = ROOT / "asm" / output
-    bypass = romtools.load(produced)
+    bypass = dump.read(produced)
     produced.unlink()
 
     entries = rombuild.entries_from_map({str(source): length for source, length in table.items()})
     image = rombuild.build(bypass, entries).image
     free = OUT / f"jp-{name}-free.sfc"
-    free.write_bytes(header.declare_no_coprocessor(image))
+    free.write_bytes(rewrite.declare_rom_only(image))
     return free
 
 
@@ -164,7 +170,7 @@ def absorb(rom, table, source, length):
 
 
 def main():
-    rom = romtools.load(RETAIL)
+    rom = dump.read(RETAIL)
     table = dict(load("jpstreams").STREAMS)
     carts = variants(rom)
 

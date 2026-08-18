@@ -1,7 +1,17 @@
 import importlib.util
 import itertools
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+sdd1 = hardware.load("sdd1")
+mapper = hardware.load("mapper")
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -15,9 +25,6 @@ def load_module(name):
 
 rombuild = load_module("rombuild")
 sdd1map = load_module("sdd1map")
-sdd1 = load_module("sdd1")
-layout = load_module("layout")
-romtools = load_module("romtools")
 
 PATCHED = ROOT / "build" / "sfa2-usa-patched.sfc"
 TAGGED = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
@@ -31,9 +38,9 @@ def read_snes(image, address, length, banks=rombuild.IMAGE_BANKS):
     out = bytearray()
     bank, addr = address >> 16, address & 0xFFFF
     while length:
-        edge = layout.HALF if addr < layout.HALF else layout.BANK
+        edge = mapper.HALF if addr < mapper.HALF else mapper.BANK
         chunk = min(length, edge - addr)
-        offset = layout.address_to_file(bank, addr, banks)
+        offset = mapper.address_to_file(bank, addr, banks)
         out += image[offset : offset + chunk]
         addr += chunk
         length -= chunk
@@ -100,17 +107,17 @@ class AllocationTest(unittest.TestCase):
 class ImageTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.rom = romtools.load(PATCHED)
-        cls.entries = rombuild.load_entries(romtools.load(TAGGED))
+        cls.rom = dump.read(PATCHED)
+        cls.entries = rombuild.load_entries(dump.read(TAGGED))
         cls.result = rombuild.build(cls.rom, cls.entries)
 
     def test_the_image_is_the_declared_size(self):
         self.assertEqual(len(self.result.image), rombuild.IMAGE_SIZE)
-        self.assertEqual(layout.bank_count(len(self.result.image)), rombuild.IMAGE_BANKS)
+        self.assertEqual(mapper.bank_count(len(self.result.image)), rombuild.IMAGE_BANKS)
 
     def test_the_lorom_view_returns_the_original(self):
         for bank in (0x00, 0x01, 0x25, 0x35, 0x3F):
-            offset = layout.address_to_file(bank, 0x8000, rombuild.IMAGE_BANKS)
+            offset = mapper.address_to_file(bank, 0x8000, rombuild.IMAGE_BANKS)
             got = self.result.image[offset : offset + 0x8000]
 
             self.assertEqual(got, self.rom[bank * 0x8000 : bank * 0x8000 + 0x8000])
@@ -141,7 +148,7 @@ class ImageTest(unittest.TestCase):
         self.assertGreater(checked, 100)
 
     def test_the_patch_routine_is_reachable_at_its_assembled_address(self):
-        offset = layout.address_to_file(0x35, 0xCD84, rombuild.IMAGE_BANKS)
+        offset = mapper.address_to_file(0x35, 0xCD84, rombuild.IMAGE_BANKS)
 
         self.assertEqual(self.result.image[offset], 0x08)
 
@@ -158,8 +165,8 @@ class ImageTest(unittest.TestCase):
         crossing = [
             e
             for e in self.entries
-            if (self.result.destinations[e.index] & 0xFFFF) < layout.HALF
-            and (self.result.destinations[e.index] & 0xFFFF) + e.length > layout.HALF
+            if (self.result.destinations[e.index] & 0xFFFF) < mapper.HALF
+            and (self.result.destinations[e.index] & 0xFFFF) + e.length > mapper.HALF
         ]
 
         self.assertGreater(len(crossing), 0)
@@ -195,7 +202,7 @@ class ImageTest(unittest.TestCase):
         )
 
         for index, part in enumerate(parts):
-            got = read_snes(self.result.image, (rombuild.TABLE_BANK + index) << 16, layout.BANK)
+            got = read_snes(self.result.image, (rombuild.TABLE_BANK + index) << 16, mapper.BANK)
 
             self.assertEqual(got, part, f"table bank ${rombuild.TABLE_BANK + index:02X}")
 
@@ -210,7 +217,7 @@ class ImageTest(unittest.TestCase):
             bank = 0xC0 + (entry.source >> 16)
             slot = entry.source & 0xFFFF
             for _ in range(0x10000):
-                offset = layout.snes_to_file(rombuild.TABLE_BANK, slot, rombuild.IMAGE_BANKS)
+                offset = mapper.snes_to_file(rombuild.TABLE_BANK, slot, rombuild.IMAGE_BANKS)
                 if image[offset] == bank:
                     break
                 slot = (slot + 1) & 0xFFFF
@@ -222,7 +229,7 @@ class ImageTest(unittest.TestCase):
         banks = rombuild.IMAGE_BANKS
 
         def table_byte(bank, index):
-            return image[layout.address_to_file(bank, index, banks)]
+            return image[mapper.address_to_file(bank, index, banks)]
 
         for entry in self.entries[:200]:
             source_bank = 0xC0 + (entry.source >> 16)

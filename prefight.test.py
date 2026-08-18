@@ -2,6 +2,10 @@ import importlib.util
 import unittest
 from pathlib import Path
 
+import hardware
+
+wdc65816 = hardware.load("mos65xx")
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -13,7 +17,6 @@ def load_module(name):
 
 
 prefight = load_module("prefight")
-wdc65816 = load_module("wdc65816")
 
 USA = ROOT / "roms" / "sfa2-usa-final.sfc"
 JP = ROOT / "roms" / "sfz2-jp-final.sfc"

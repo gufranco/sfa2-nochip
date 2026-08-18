@@ -2,6 +2,14 @@ import importlib.util
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+sdd1 = hardware.load("sdd1")
+
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -12,9 +20,7 @@ def _load(name):
     return module
 
 
-sdd1 = _load("sdd1")
 sdd1tables = _load("sdd1tables")
-romtools = _load("romtools")
 rombuild = _load("rombuild")
 jpstreams = _load("jpstreams")
 usastreams = _load("usastreams")
@@ -90,7 +96,7 @@ def check(region):
 
     retail = RETAIL[region]
     if retail.exists():
-        broken = undecodable(romtools.load(retail), entries)
+        broken = undecodable(dump.read(retail), entries)
         if broken:
             source, length, why = broken[0]
             findings.append(

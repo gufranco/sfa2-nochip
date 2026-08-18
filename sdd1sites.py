@@ -3,10 +3,14 @@ from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import romtools as rt
-import sdd1
-import sdd1map
-import wdc65816 as cpu
+
+import hardware
+
+cpu = hardware.load("mos65xx")
+dump = hardware.load("romimage").dump
+sdd1 = hardware.load("sdd1")
+
+import sdd1map  # noqa: E402
 
 REGISTER_BASE = 0x4800
 REGISTER_COUNT = 8
@@ -76,8 +80,8 @@ def main():
         print("usage: sdd1sites.py <source-rom> <tagged-rom>", file=sys.stderr)
         return 2
 
-    rom = rt.load(sys.argv[1])
-    entries = sdd1map.build_map(rt.load(sys.argv[2]))
+    rom = dump.read(sys.argv[1])
+    entries = sdd1map.build_map(dump.read(sys.argv[2]))
     mask = compressed_mask(rom, entries)
     print(f"  compressed data covers {sum(mask):,} of {len(rom):,} bytes")
 

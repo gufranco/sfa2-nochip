@@ -93,6 +93,21 @@ def longest_burst(frames):
     return best
 
 
+FREE_MAPPING = "-2"
+CART_MAPPING = "-1"
+
+
+def mapping_for(stem):
+    """Which map an image is read through, decided by the form it was built in.
+
+    A converted image is windowed, because it is larger than the address space
+    the cartridge layout can reach. One still in cartridge form is not, and
+    reading it through the windowed map would fetch the right bytes from the
+    wrong bank.
+    """
+    return FREE_MAPPING if stem.endswith("-free") else CART_MAPPING
+
+
 def main(argv):
     wanted = argv[1] if len(argv) > 1 else ""
     rows = []
@@ -101,7 +116,7 @@ def main(argv):
             continue
         if image.stem.endswith("-bypass"):
             continue
-        mapping = "-2" if image.stem.endswith("-free") else "-1"
+        mapping = mapping_for(image.stem)
         summary = summarise(run(image, mapping))
         rows.append((image.stem, summary))
         print(

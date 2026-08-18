@@ -5,6 +5,14 @@ import sys
 from collections import namedtuple
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+rewrite = hardware.load("romimage").rewrite
+
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -15,9 +23,7 @@ def _load(name):
     return module
 
 
-romtools = _load("romtools")
 rombuild = _load("rombuild")
-header = _load("header")
 spcfast = _load("spcfast")
 shinakuma = _load("shinakuma")
 gamefixes = _load("gamefixes")
@@ -85,12 +91,12 @@ def assemble_bypass(region, cart, workdir):
 
 
 def build(region, workdir):
-    retail = romtools.load(REGIONS[region].retail)
+    retail = dump.read(REGIONS[region].retail)
     cart = repeatload.apply(gamefixes.apply(shinakuma.apply(spcfast.apply(retail))))
     bypass = prefight.apply(assemble_bypass(region, cart, workdir))
     extra = ((prefight.TABLE_ADDRESS, prefight.table()),)
     image = rombuild.build(bypass, entries_for(region), extra=extra).image
-    return header.declare_no_coprocessor(image)
+    return rewrite.declare_rom_only(image)
 
 
 def main(argv):

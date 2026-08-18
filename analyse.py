@@ -2,20 +2,24 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import romtools as rt
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
 
 BLOCK = 65536
 COMPRESSED_RATIO = 0.85
 
 
 def compressed_share(data, block=BLOCK, threshold=COMPRESSED_RATIO):
-    ratios = rt.block_ratios(data, block)
+    ratios = dump.block_ratios(data, block)
     hits = sum(1 for r in ratios if r > threshold)
     return hits, len(ratios), ratios
 
 
 def novelty(candidate, reference, chunk=1024):
-    index = rt.chunk_index(reference, chunk=chunk, stride=512)
+    index = dump.chunk_index(reference, chunk=chunk, stride=512)
     new = total = 0
     for i in range(0, len(candidate) - chunk + 1, chunk):
         total += 1
@@ -51,7 +55,7 @@ def main():
         ("sfa2_proto", sys.argv[4]),
     ]:
         p = Path(path)
-        roms[name] = rt.join_game_doctor(p) if p.is_dir() else rt.load(p)
+        roms[name] = dump.read(p)
 
     print("== size and compressed-region profile")
     report("Star Ocean original (chip)", roms["so_orig"])

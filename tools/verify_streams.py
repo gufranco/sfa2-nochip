@@ -2,6 +2,13 @@ import importlib.util
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -13,7 +20,6 @@ def load(name):
 
 
 sdd1ref = load("sdd1ref")
-romtools = load("romtools")
 rombuild = load("rombuild")
 jpstreams = load("jpstreams")
 usastreams = load("usastreams")
@@ -34,7 +40,7 @@ SETS = {
 
 def verify(region):
     retail, cases_for = SETS[region]
-    rom = romtools.load(retail)
+    rom = dump.read(retail)
     cases = cases_for()
     mismatches = []
     for start in range(0, len(cases), BATCH):

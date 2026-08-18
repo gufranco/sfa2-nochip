@@ -1,6 +1,17 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
+cpu = hardware.load("mos65xx")
+mapper = hardware.load("mapper")
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -14,7 +25,6 @@ def load_module(name):
 
 patchrun = load_module("patchrun")
 rombuild = load_module("rombuild")
-romtools = load_module("romtools")
 
 IMAGE = ROOT / "build" / "sfa2-usa-nochip.sfc"
 PATCHED = ROOT / "build" / "sfa2-usa-patched.sfc"
@@ -28,9 +38,9 @@ TAGGED = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
 class TranslationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.image = romtools.load(IMAGE)
-        cls.entries = rombuild.load_entries(romtools.load(TAGGED))
-        cls.expected = rombuild.build(romtools.load(PATCHED), cls.entries).destinations
+        cls.image = dump.read(IMAGE)
+        cls.entries = rombuild.load_entries(dump.read(TAGGED))
+        cls.expected = rombuild.build(dump.read(PATCHED), cls.entries).destinations
         cls.memory = patchrun.SnesMemory(cls.image)
 
     def test_every_stream_translates_to_its_allocated_address(self):
@@ -82,16 +92,51 @@ class TranslationTest(unittest.TestCase):
                 )
                 self.assertFalse(outcome.dmap & patchrun.FIXED_ADDRESS_BIT)
 
-    def test_the_caller_registers_come_back_untouched(self):
+    def test_an_eight_bit_callers_registers_come_back_untouched(self):
         for entry in self.entries[:300]:
             outcome = patchrun.translate(
-                self.memory, entry.source, a=0x0001, x=0x1234, y=0x5678, c=True
+                self.memory, entry.source, a=0x0001, x=0x0034, y=0x0078, c=True
             )
 
             self.assertEqual(outcome.cpu.a & 0xFF, 0x01)
+            self.assertEqual(outcome.cpu.x, 0x34)
+            self.assertEqual(outcome.cpu.y, 0x78)
+            self.assertTrue(outcome.cpu.c)
+
+    def test_a_sixteen_bit_callers_registers_come_back_untouched(self):
+        for entry in self.entries[:300]:
+            outcome = patchrun.translate(
+                self.memory,
+                entry.source,
+                m8=False,
+                x8=False,
+                a=0x1001,
+                x=0x1234,
+                y=0x5678,
+                c=True,
+            )
+
+            self.assertEqual(outcome.cpu.a, 0x1001)
             self.assertEqual(outcome.cpu.x, 0x1234)
             self.assertEqual(outcome.cpu.y, 0x5678)
             self.assertTrue(outcome.cpu.c)
+
+    def test_a_narrow_caller_gets_back_only_what_it_could_hold(self):
+        """The high byte of an index register does not survive an eight bit caller.
+
+        The routine widens the registers, pushes them whole, and restores the
+        caller's status byte on the way out. Restoring a status byte that says the
+        index registers are eight bits wide clears their high bytes, so a caller
+        running narrow cannot smuggle sixteen bits through the call. That is the
+        processor's rule rather than this routine's, and a test that expected
+        otherwise was reading a model that did not implement it.
+        """
+        outcome = patchrun.translate(
+            self.memory, self.entries[0].source, a=0x0001, x=0x1234, y=0x5678
+        )
+
+        self.assertEqual(outcome.cpu.x, 0x34)
+        self.assertEqual(outcome.cpu.y, 0x78)
 
     def test_the_stack_is_balanced_on_return(self):
         for entry in self.entries[:300]:
@@ -142,7 +187,7 @@ class ReferenceBuildTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.image = romtools.load(STAR_OCEAN)
+        cls.image = dump.read(STAR_OCEAN)
 
     def run_reference(self, source):
         memory = patchrun.SnesMemory(self.image, banks=STAR_OCEAN_BANKS)
@@ -163,7 +208,7 @@ class ReferenceBuildTest(unittest.TestCase):
             memory = self.run_reference(source)
             destination = patchrun.dma_source(memory.triggered)
 
-            landed = patchrun.layout.snes_to_file(
+            landed = patchrun.mapper.snes_to_file(
                 destination >> 16, destination & 0xFFFF, STAR_OCEAN_BANKS
             )
 

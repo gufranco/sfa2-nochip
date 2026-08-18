@@ -1,0 +1,151 @@
+import importlib.util
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import hardware  # noqa: E402
+
+mapper = hardware.load("mapper")
+
+
+def load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+verify_image = load_module("verify_image", ROOT / "tools" / "verify_image.py")
+
+BANKS = 192
+"""The image the builder produces, and the smallest one that reaches the table.
+
+The lookup table sits in bank `$60`, which the windowed layout places past the
+eighth megabyte of the file. An image small enough to be convenient for a test
+cannot hold it, so the fixture is the size the real one is.
+"""
+
+
+def _image(banks=BANKS):
+    return bytearray(banks * mapper.BANK)
+
+
+def _write(image, banks, bank, address, value):
+    image[mapper.address_to_file(bank, address, banks)] = value
+
+
+def _entry(image, banks, slot, source, destination):
+    _write(image, banks, verify_image.TABLE_BANK, slot, verify_image.WINDOW_BASE + (source >> 16))
+    _write(image, banks, verify_image.TABLE_BANK + 1, slot, destination & 0xFF)
+    _write(image, banks, verify_image.TABLE_BANK + 2, slot, (destination >> 8) & 0xFF)
+    _write(image, banks, verify_image.TABLE_BANK + 3, slot, (destination >> 16) & 0xFF)
+
+
+class WindowReadTest(unittest.TestCase):
+    def test_a_byte_comes_back_from_where_it_was_written(self):
+        image = _image()
+        _write(image, BANKS, 0x60, 0x1234, 0xAB)
+
+        self.assertEqual(verify_image.window_read(image, BANKS, 0x60, 0x1234), 0xAB)
+
+    def test_two_addresses_in_different_banks_do_not_collide(self):
+        image = _image()
+        _write(image, BANKS, 0x60, 0x1234, 0xAB)
+        _write(image, BANKS, 0x61, 0x1234, 0xCD)
+
+        self.assertEqual(verify_image.window_read(image, BANKS, 0x60, 0x1234), 0xAB)
+        self.assertEqual(verify_image.window_read(image, BANKS, 0x61, 0x1234), 0xCD)
+
+    def test_the_two_halves_of_a_bank_are_different_places(self):
+        image = _image()
+        _write(image, BANKS, 0x60, 0x0000, 0x11)
+        _write(image, BANKS, 0x60, 0x8000, 0x22)
+
+        self.assertEqual(verify_image.window_read(image, BANKS, 0x60, 0x0000), 0x11)
+        self.assertEqual(verify_image.window_read(image, BANKS, 0x60, 0x8000), 0x22)
+
+
+class ResolveTest(unittest.TestCase):
+    def test_an_entry_at_the_exact_slot_is_found_without_scanning(self):
+        image = _image()
+        _entry(image, BANKS, 0x104C, 0x19104C, 0x0C4000)
+
+        destination, step = verify_image.resolve(image, BANKS, 0x19104C)
+
+        self.assertEqual(destination, 0x0C4000)
+        self.assertEqual(step, 0)
+
+    def test_an_entry_a_few_slots_along_is_found_and_the_distance_reported(self):
+        image = _image()
+        _entry(image, BANKS, 0x104C + 3, 0x19104C, 0x0C4000)
+
+        destination, step = verify_image.resolve(image, BANKS, 0x19104C)
+
+        self.assertEqual(destination, 0x0C4000)
+        self.assertEqual(step, 3)
+
+    def test_an_entry_past_the_budget_is_not_found(self):
+        image = _image()
+        _entry(image, BANKS, 0x104C + verify_image.SCAN_BUDGET + 1, 0x19104C, 0x0C4000)
+
+        self.assertEqual(verify_image.resolve(image, BANKS, 0x19104C), (None, None))
+
+    def test_an_empty_table_resolves_nothing(self):
+        self.assertEqual(verify_image.resolve(_image(), BANKS, 0x19104C), (None, None))
+
+    def test_an_entry_for_another_source_bank_is_not_this_one(self):
+        image = _image()
+        _entry(image, BANKS, 0x104C, 0x18104C, 0x0C4000)
+
+        self.assertEqual(verify_image.resolve(image, BANKS, 0x19104C), (None, None))
+
+    def test_a_lookup_near_the_top_of_a_bank_wraps_rather_than_reading_the_next(self):
+        image = _image()
+        _entry(image, BANKS, 0x0001, 0x19FFFF, 0x0C4000)
+
+        destination, step = verify_image.resolve(image, BANKS, 0x19FFFF)
+
+        self.assertEqual(destination, 0x0C4000)
+        self.assertEqual(step, 2)
+
+
+class NamingTest(unittest.TestCase):
+    def test_an_image_built_with_the_corrections_says_so_in_its_name(self):
+        self.assertTrue(verify_image.carries_game_fixes("build/all/jp-both-free.sfc"))
+
+    def test_one_built_without_them_does_not(self):
+        self.assertFalse(verify_image.carries_game_fixes("build/all/jp-sa-free.sfc"))
+
+    def test_the_check_ignores_case(self):
+        self.assertTrue(verify_image.carries_game_fixes("BUILD/ALL/JP-BOTH-FREE.SFC"))
+
+    def test_a_japanese_image_resolves_to_the_japanese_table(self):
+        streams, retail = verify_image.region_of("jp-both-free.sfc")
+
+        self.assertEqual(streams, verify_image.jpstreams.STREAMS)
+        self.assertIn("sfz2", retail.name)
+
+    def test_a_usa_image_resolves_to_the_usa_table(self):
+        streams, retail = verify_image.region_of("usa-both-free.sfc")
+
+        self.assertEqual(streams, verify_image.usastreams.STREAMS)
+        self.assertIn("sfa2", retail.name)
+
+    def test_a_retail_name_is_enough_to_tell_the_region(self):
+        self.assertEqual(
+            verify_image.region_of("sfz2-jp-final.sfc")[0], verify_image.jpstreams.STREAMS
+        )
+        self.assertEqual(
+            verify_image.region_of("sfa2-usa-final.sfc")[0], verify_image.usastreams.STREAMS
+        )
+
+    def test_a_name_belonging_to_no_region_is_refused_rather_than_guessed(self):
+        with self.assertRaises(ValueError):
+            verify_image.region_of("something-else.sfc")
+
+
+if __name__ == "__main__":
+    unittest.main()

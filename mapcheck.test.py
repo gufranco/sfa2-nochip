@@ -1,6 +1,14 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -13,7 +21,6 @@ def load_module(name):
 
 
 mapcheck = load_module("mapcheck")
-romtools = load_module("romtools")
 jpstreams = load_module("jpstreams")
 
 JP_ROM = ROOT / "roms" / "sfz2-jp-final.sfc"
@@ -69,7 +76,7 @@ class ScanCostTest(unittest.TestCase):
 class JapaneseMapTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.rom = romtools.load(JP_ROM)
+        cls.rom = dump.read(JP_ROM)
         cls.entries = mapcheck.load()
 
     def test_the_map_holds_the_streams_the_build_needs(self):

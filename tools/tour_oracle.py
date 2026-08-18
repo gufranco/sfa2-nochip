@@ -1,7 +1,16 @@
 import importlib.util
 import re
 import subprocess
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+sdd1 = hardware.load("sdd1")
+
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -12,9 +21,6 @@ def load(name):
     spec.loader.exec_module(module)
     return module
 
-
-sdd1 = load("sdd1")
-romtools = load("romtools")
 
 ORACLE = "build/all/jp-sa-cart.sfc"
 RETAIL = ROOT / "roms" / "sfz2-jp-final.sfc"
@@ -71,7 +77,7 @@ def run(name, extra, frames):
 
 
 def main():
-    rom = romtools.load(RETAIL)
+    rom = dump.read(RETAIL)
     table = {}
     for line in TABLE.read_text().splitlines():
         source, length = line.split()

@@ -4,8 +4,12 @@ from collections import namedtuple
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import romtools as rt
-import sdd1
+
+import hardware
+
+dump = hardware.load("romimage").dump
+sdd1 = hardware.load("sdd1")
+
 
 PROBE_LENGTH = 8
 PROBE_BITS = 25
@@ -115,8 +119,8 @@ def main():
         )
         return 2
 
-    source = rt.load(sys.argv[1])
-    reference = rt.load(sys.argv[2])
+    source = dump.read(sys.argv[1])
+    reference = dump.read(sys.argv[2])
     start = int(sys.argv[3], 0) if len(sys.argv) > 3 else 0
     stop = int(sys.argv[4], 0) if len(sys.argv) > 4 else len(source)
 

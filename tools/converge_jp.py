@@ -5,6 +5,15 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+rewrite = hardware.load("romimage").rewrite
+sdd1 = hardware.load("sdd1")
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -15,10 +24,7 @@ def load(name):
     return module
 
 
-sdd1 = load("sdd1")
-romtools = load("romtools")
 rombuild = load("rombuild")
-header = load("header")
 spcfast = load("spcfast")
 shinakuma = load("shinakuma")
 
@@ -63,7 +69,7 @@ def write_table(table):
 
 def build_variants(table):
     OUT.mkdir(parents=True, exist_ok=True)
-    retail = romtools.load(RETAIL)
+    retail = dump.read(RETAIL)
     fast = spcfast.apply(retail)
     carts = {"base": retail, "spc": fast, "both": shinakuma.apply(fast)}
     entries = rombuild.entries_from_map({str(s): n for s, n in table.items()})
@@ -85,11 +91,11 @@ def build_variants(table):
             capture_output=True,
         )
         produced = ROOT / "asm" / produced_name
-        bypass = romtools.load(produced)
+        bypass = dump.read(produced)
         produced.unlink()
         image = rombuild.build(bypass, entries).image
         free = OUT / f"jp-{name}-free.sfc"
-        free.write_bytes(header.declare_no_coprocessor(image))
+        free.write_bytes(rewrite.declare_rom_only(image))
         built.append(free)
     return built
 
@@ -136,7 +142,7 @@ def requests_of(image, extra, frames):
 
 
 def main():
-    retail = romtools.load(RETAIL)
+    retail = dump.read(RETAIL)
     for iteration in range(1, 21):
         table = read_table()
         images = build_variants(table)

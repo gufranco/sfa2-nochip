@@ -3,6 +3,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+rewrite = hardware.load("romimage").rewrite
+
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -19,8 +27,6 @@ gamefixes = load("gamefixes")
 repeatload = load("repeatload")
 prefight = load("prefight")
 rombuild = load("rombuild")
-romtools = load("romtools")
-header = load("header")
 sdd1map = load("sdd1map")
 
 OUT = ROOT / "build" / "all"
@@ -71,7 +77,7 @@ PREFIGHT_VARIANT = "both"
 
 
 def image_source(name, bypass):
-    rom = romtools.load(bypass)
+    rom = dump.read(bypass)
     if name != PREFIGHT_VARIANT:
         return rom, ()
     return prefight.apply(rom), ((prefight.TABLE_ADDRESS, prefight.table()),)
@@ -80,14 +86,14 @@ def image_source(name, bypass):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for region, path in RETAIL.items():
-        retail = romtools.load(path)
+        retail = dump.read(path)
         entries = entries_for(region)
         for name, cart in variants(retail).items():
             bypass = assemble(region, name, cart)
             source, extra = image_source(name, bypass)
             image = rombuild.build(source, entries, extra=extra).image
             free = OUT / f"{region}-{name}-free.sfc"
-            free.write_bytes(header.declare_no_coprocessor(image))
+            free.write_bytes(rewrite.declare_rom_only(image))
             print(f"  {region}-{name}: cart, bypass, free ({len(entries)} streams)", flush=True)
     return 0
 

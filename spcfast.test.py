@@ -1,6 +1,15 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+spc700 = hardware.load("spc700")
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -13,8 +22,6 @@ def load_module(name):
 
 
 spcfast = load_module("spcfast")
-spc700 = load_module("spc700")
-romtools = load_module("romtools")
 
 USA = ROOT / "roms" / "sfa2-usa-final.sfc"
 JP = ROOT / "roms" / "sfz2-jp-final.sfc"
@@ -123,8 +130,8 @@ class ApplyTest(unittest.TestCase):
 class RetailRomTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.usa = romtools.load(USA)
-        cls.jp = romtools.load(JP)
+        cls.usa = dump.read(USA)
+        cls.jp = dump.read(JP)
 
     def test_both_regions_are_recognised_as_stock(self):
         self.assertTrue(spcfast.is_stock(self.usa))

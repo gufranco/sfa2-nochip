@@ -2,8 +2,17 @@ import importlib.util
 import random
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+sdd1 = hardware.load("sdd1")
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -16,8 +25,6 @@ def load_module(name):
 
 
 ref = load_module("sdd1ref")
-sdd1 = load_module("sdd1")
-romtools = load_module("romtools")
 
 STAR_OCEAN = ROOT / "roms" / "star-ocean-jp-original.sfc"
 ALPHA2 = ROOT / "roms" / "sfa2-usa-final.sfc"
@@ -89,7 +96,7 @@ class DifferentialTest(unittest.TestCase):
             self.assertEqual(got, want, f"mismatch at offset {offset:#x}")
 
     def test_it_agrees_with_the_c_reference_on_arbitrary_star_ocean_offsets(self):
-        rom = romtools.load(STAR_OCEAN)
+        rom = dump.read(STAR_OCEAN)
         rng = random.Random(20260813)
         cases = [
             (rng.randrange(len(rom) - 65536), rng.choice([1, 2, 15, 64, 832, 4096]))
@@ -99,7 +106,7 @@ class DifferentialTest(unittest.TestCase):
         self.assert_agrees(rom, cases)
 
     def test_it_agrees_with_the_c_reference_on_every_header_configuration(self):
-        rom = bytearray(romtools.load(ALPHA2)[:262144])
+        rom = bytearray(dump.read(ALPHA2)[:262144])
         cases = []
         for index in range(16):
             offset = 4096 * (index + 1)
@@ -109,7 +116,7 @@ class DifferentialTest(unittest.TestCase):
         self.assert_agrees(bytes(rom), cases)
 
     def test_it_agrees_with_the_c_reference_on_a_full_64k_block(self):
-        rom = romtools.load(STAR_OCEAN)
+        rom = dump.read(STAR_OCEAN)
 
         self.assert_agrees(rom, [(0x101010, 0)])
 

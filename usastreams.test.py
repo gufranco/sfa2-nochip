@@ -1,6 +1,14 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -15,7 +23,6 @@ def load_module(name):
 usastreams = load_module("usastreams")
 jpstreams = load_module("jpstreams")
 rombuild = load_module("rombuild")
-romtools = load_module("romtools")
 
 TAGGED_ROM = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
 
@@ -61,7 +68,7 @@ class ShapeTest(unittest.TestCase):
 @unittest.skipUnless(TAGGED_ROM.exists(), "the tagged ROM is not present")
 class RegenerationTest(unittest.TestCase):
     def test_the_frozen_table_matches_what_the_tags_say(self):
-        entries = rombuild.load_entries(romtools.load(TAGGED_ROM))
+        entries = rombuild.load_entries(dump.read(TAGGED_ROM))
         extracted = tuple((entry.source, entry.length) for entry in entries if entry.length)
 
         self.assertEqual(extracted, usastreams.TAGGED)

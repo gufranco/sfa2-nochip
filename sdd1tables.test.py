@@ -1,6 +1,14 @@
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import hardware
+
+dump = hardware.load("romimage").dump
+
 
 ROOT = Path(__file__).resolve().parent
 
@@ -14,7 +22,6 @@ def load_module(name):
 
 tables = load_module("sdd1tables")
 sdd1map = load_module("sdd1map")
-romtools = load_module("romtools")
 
 TAGGED = ROOT / "roms" / "sfa2-usa-vc-sound-restored.sfc"
 
@@ -103,7 +110,7 @@ class BuildTest(unittest.TestCase):
 class RealMapTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.entries = [e for e in sdd1map.build_map(romtools.load(TAGGED)) if e.length]
+        cls.entries = [e for e in sdd1map.build_map(dump.read(TAGGED)) if e.length]
 
     def test_every_real_stream_places_and_verifies(self):
         keys = [tables.source_key(e.source) for e in self.entries]

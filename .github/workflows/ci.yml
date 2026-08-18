@@ -51,6 +51,8 @@ jobs:
         os: [ubuntu-latest, macos-26]
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v7
         with:
