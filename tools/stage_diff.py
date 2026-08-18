@@ -26,7 +26,7 @@ def run(image, matchup, out):
             f"SFHASH=/work/{out.relative_to(ROOT)}",
             "-v",
             f"{ROOT}:/work",
-            "sf-decompressed/sfemu:snes9x-1.63",
+            "street-fighter-alpha-2-nochip/sfemu:snes9x-1.63",
             str(image.relative_to(ROOT)),
             str(FRAMES),
             "-2",

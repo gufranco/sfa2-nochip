@@ -40,7 +40,7 @@ def run(image, mapping, roster, budget):
                 f"SFTICK={TICK}",
                 "-v",
                 f"{ROOT}:/work",
-                "sf-decompressed/sfemu:snes9x-1.63",
+                "street-fighter-alpha-2-nochip/sfemu:snes9x-1.63",
                 str(image.relative_to(ROOT)),
                 str(roster * budget),
                 mapping,

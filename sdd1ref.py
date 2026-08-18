@@ -9,7 +9,7 @@ import sdd1
 
 ROOT = Path(__file__).resolve().parent
 REF_DIR = ROOT / "ref"
-IMAGE = "sf-decompressed/sdd1ref:snes9x-1.63"
+IMAGE = "street-fighter-alpha-2-nochip/sdd1ref:snes9x-1.63"
 MAX_LENGTH = sdd1.MAX_LENGTH
 SAMPLE_LENGTHS = (1, 2, 15, 16, 17, 64, 832, 2048, 8192)
 

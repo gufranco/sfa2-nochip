@@ -39,7 +39,7 @@ def run(image, mapping):
                 "SFAPU=1",
                 "-v",
                 f"{ROOT}:/work",
-                "sf-decompressed/sfemu:snes9x-1.63",
+                "street-fighter-alpha-2-nochip/sfemu:snes9x-1.63",
                 str(image.relative_to(ROOT)),
                 str(FRAMES),
                 mapping,

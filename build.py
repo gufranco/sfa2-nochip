@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ASM_DIR = ROOT / "asm"
-IMAGE = "sf-decompressed/asar:1.81"
+IMAGE = "street-fighter-alpha-2-nochip/asar:1.81"
 
 
 def build_image_command():
