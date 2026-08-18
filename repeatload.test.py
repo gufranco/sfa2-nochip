@@ -80,8 +80,30 @@ class SiteTest(unittest.TestCase):
             self.assertEqual(set(window), {0xFF}, str(path))
 
     def test_the_marker_sits_inside_the_run_no_write_was_seen_in(self):
-        self.assertGreaterEqual(repeatload.MARKER, 0x1F3F)
-        self.assertLessEqual(repeatload.MARKER + 3, 0x1FC6)
+        """The measured free run, not a range that looked free.
+
+        Two forty five thousand frame tours, one per region, walking the whole
+        roster and entering fights, wrote no byte anywhere in this range. The
+        marker sits inside it with room on both sides. The address it used before
+        was one byte below a run that really is free, and the game writes that
+        byte on every play.
+        """
+        first, last = 0x7E5E70, 0x7EFE3F
+
+        self.assertGreaterEqual(repeatload.MARKER, first)
+        self.assertLessEqual(repeatload.MARKER + 3, last)
+
+    def test_the_marker_is_not_in_the_page_the_game_keeps_variables_in(self):
+        self.assertGreater(repeatload.MARKER & 0xFFFF, 0x2000)
+
+    def test_every_address_the_routine_touches_is_the_marker(self):
+        touched = set()
+        for at in range(len(repeatload.ROUTINE) - 3):
+            if repeatload.ROUTINE[at] in (0xAF, 0x8F):
+                operand = repeatload.ROUTINE[at + 1 : at + 4]
+                touched.add(int.from_bytes(operand, "little"))
+
+        self.assertEqual(touched, {repeatload.MARKER, repeatload.MARKER + 1, repeatload.MARKER + 2})
 
 
 class ApplyTest(unittest.TestCase):

@@ -445,6 +445,30 @@ each would need building and running against both conversions first.
 
 ---
 
+## Checking a patch that changes the audio path
+
+Two patches here change how the cartridge feeds the audio processor: one replaces the sample-upload
+loop with a faster one, the other skips an upload when the list asked for is the one already loaded.
+Neither is allowed to change which bytes the audio processor ends up holding.
+
+Listening cannot settle that, and neither can diffing the audio processor's memory at the end of a
+run: the patch changes when things happen, so the two runs stop with the driver mid-note in
+different places, and thousands of bytes differ without meaning anything.
+
+```bash
+python3 tools/compare_audio.py build/all/jp-base-cart.sfc build/all/jp-spc-cart.sfc
+python3 tools/compare_audio.py --fights build/all/jp-spc-cart.sfc build/all/jp-repeat-cart.sfc
+```
+
+The comparison is per upload. Every block the cartridge hands over is checked against the bytes still
+in the cartridge, so a faster loop that drops a byte fails on the block it dropped it in, whatever
+the driver is doing afterwards. Alongside that it reports which sources were uploaded at all, since
+a skip is supposed to upload fewer of them and never different ones, and how many writes each block
+took, which is the one number a faster loop is supposed to change.
+
+The roster tour alone never reaches the skip: every character loads a different list. `--fights`
+enters a fight and returns, which is the only way to ask for a list that is already loaded.
+
 ## The hardware this is checked against
 
 ```bash
@@ -489,6 +513,7 @@ container per toolchain.
 | [`pack.py`](pack.py) | builds the release images, named with the version |
 | [`spcfast.py`](spcfast.py) | applies the sample upload patch |
 | [`repeatload.py`](repeatload.py) | applies the skip for a sample list already loaded |
+| [`tools/compare_audio.py`](tools/compare_audio.py) | checks a build's uploads against a stock one, block by block |
 | [`shinakuma.py`](shinakuma.py) | applies the Shin Akuma unlock |
 | [`gamefixes.py`](gamefixes.py) | applies the corrections |
 | [`prefight.py`](prefight.py) | computes the pre-fight table and redirects both of the builder's callers |

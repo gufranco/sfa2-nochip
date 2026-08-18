@@ -63,8 +63,19 @@ def run(name, extra, frames):
             stderr=subprocess.STDOUT,
             check=False,
         )
+    return requests(log.read_text(errors="replace").splitlines())
+
+
+def requests(lines):
+    """Every decompression the cartridge asked for, and the largest it asked for.
+
+    Only transfers whose source address never advances are decompressions, which
+    is the condition the chip works under, and only sources inside the cartridge
+    window are cartridge data. A transfer from below the window is the game
+    moving something else, and counting it would put fiction into the table.
+    """
     wanted = {}
-    for line in log.read_text(errors="replace").splitlines():
+    for line in lines:
         found = DMA.match(line)
         if not found:
             continue

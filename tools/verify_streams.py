@@ -38,17 +38,28 @@ SETS = {
 }
 
 
+def batches(cases, size=BATCH):
+    """The cases split into runs the reference is asked about one run at a time.
+
+    The reference runs in a container, and handing it every stream at once means
+    one very long silence followed by an answer. Splitting the work lets progress
+    be reported while it happens, which on a set of several thousand streams is
+    the difference between a tool that looks stuck and one that does not.
+    """
+    return [cases[start : start + size] for start in range(0, len(cases), size)]
+
+
 def verify(region):
     retail, cases_for = SETS[region]
     rom = dump.read(retail)
     cases = cases_for()
     mismatches = []
-    for start in range(0, len(cases), BATCH):
-        chunk = cases[start : start + BATCH]
+    checked = 0
+    for chunk in batches(cases):
+        checked += len(chunk)
         mismatches.extend(sdd1ref.compare(rom, chunk))
         print(
-            f"    {region}: {min(start + BATCH, len(cases)):5d}/{len(cases)} checked, "
-            f"{len(mismatches)} differing",
+            f"    {region}: {checked:5d}/{len(cases)} checked, {len(mismatches)} differing",
             flush=True,
         )
     return cases, mismatches
