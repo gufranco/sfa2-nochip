@@ -8,6 +8,10 @@ ASM_DIR = ROOT / "asm"
 IMAGE = "street-fighter-alpha-2-nochip/asar:1.81"
 
 
+class ToolchainMissing(Exception):
+    """The program that builds and runs the container is not on PATH."""
+
+
 def build_image_command():
     return [
         "docker",
@@ -40,9 +44,21 @@ def stage_rom(source, work_dir, output_name):
     return target
 
 
+def missing_message(program):
+    return (
+        f"{program} is not on PATH, and this build needs it. "
+        f"The assembler runs in a container so its version is pinned; "
+        f"nothing is assembled on the host. "
+        f"Install Docker, start it, and check it answers with: {program} --version"
+    )
+
+
 def run(args):
     print("  $ " + " ".join(args), flush=True)
-    result = subprocess.run(args, text=True, check=False)
+    try:
+        result = subprocess.run(args, text=True, check=False)
+    except FileNotFoundError as absent:
+        raise ToolchainMissing(missing_message(args[0])) from absent
     return result.returncode
 
 
@@ -78,5 +94,13 @@ def main():
     return code
 
 
+def cli():
+    try:
+        return main()
+    except ToolchainMissing as absent:
+        print(absent, file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli())

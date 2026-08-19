@@ -68,11 +68,29 @@ def entries_for(region):
     return rombuild.entries_from_map({str(source): length for source, length in table})
 
 
+class AssemblyFailed(Exception):
+    """The bypass patch did not assemble, carrying what the assembler said."""
+
+
+def assembly_failure(region, result):
+    said = [
+        f"the {region} bypass patch did not assemble: build.py exited {result.returncode}",
+        "",
+        "This step assembles the patch in a container, so Docker has to be installed",
+        "and running. Check it answers with: docker --version",
+    ]
+    for stream, raw in (("stdout", result.stdout), ("stderr", result.stderr)):
+        text = (raw or "").strip()
+        if text:
+            said += ["", f"--- build.py {stream} ---", text]
+    return "\n".join(said)
+
+
 def assemble_bypass(region, cart, workdir):
     staged = workdir / f"{region}-patched.sfc"
     staged.write_bytes(cart)
     produced_name = f"{region}-bypass.sfc"
-    subprocess.run(
+    result = subprocess.run(
         [
             sys.executable,
             "build.py",
@@ -81,9 +99,12 @@ def assemble_bypass(region, cart, workdir):
             produced_name,
         ],
         cwd=ROOT,
-        check=True,
+        check=False,
         capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:
+        raise AssemblyFailed(assembly_failure(region, result))
     produced = ROOT / "asm" / produced_name
     image = produced.read_bytes()
     produced.unlink()
@@ -127,7 +148,11 @@ def main(argv):
 
     lines = []
     for region in wanted:
-        image = build(region, workdir)
+        try:
+            image = build(region, workdir)
+        except AssemblyFailed as failure:
+            print(failure, file=sys.stderr)
+            return 1
         name = output_name(region)
         (DIST / name).write_bytes(image)
         lines.append(manifest_line(name, image))

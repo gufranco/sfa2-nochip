@@ -20,7 +20,7 @@ out, so it runs from any flash cartridge that can hold it.**
 </p>
 
 **No coprocessor** · **no mapper hardware** · **12,582,912 bytes** · both regions · pre-fight pause cut
-to **0.72 s** · **478** tests · **zero** bytes of game data shipped
+to **0.72 s** · **544** tests · **zero** bytes of game data shipped
 
 ```bash
 python3 tools/identify.py    # check your own cartridge dumps
@@ -565,7 +565,7 @@ verified by sha256, which is the reference the Python decompressor is tested aga
 | Shell | `shellcheck --severity=style --shell=bash scripts/*.sh` |
 | The image matrix | `python3 tools/rebuild_all.py && python3 tools/validate_all.py` |
 
-478 tests across 32 modules, 406 beside the analysis modules and 72 beside the tools. Several need the
+544 tests across 35 modules, 344 beside the analysis modules and 200 beside the tools. Several need the
 retail cartridges and skip cleanly without them, so a fresh clone runs the suite green.
 
 ### Conventions

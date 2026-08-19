@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -86,6 +88,41 @@ class SafetyTest(unittest.TestCase):
             out.write_bytes(b"B" * 512)
 
             self.assertEqual(rom.read_bytes(), b"A" * 512)
+
+
+class ToolchainTest(unittest.TestCase):
+    def test_an_absent_program_is_named_rather_than_traced(self):
+        with self.assertRaises(bd.ToolchainMissing) as raised:
+            bd.run(["definitely-not-a-real-program-9f3a", "--version"])
+
+        self.assertIn("definitely-not-a-real-program-9f3a", str(raised.exception))
+
+    def test_the_message_says_how_to_check_the_program_is_there(self):
+        message = bd.missing_message("docker")
+
+        self.assertIn("docker --version", message)
+
+    def test_the_message_says_why_a_container_is_used(self):
+        self.assertIn("pinned", bd.missing_message("docker"))
+
+    def test_an_absent_toolchain_exits_one_and_says_so_on_stderr(self):
+        def absent():
+            raise bd.ToolchainMissing("docker is not on PATH")
+
+        original, bd.main = bd.main, absent
+        stderr = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(stderr):
+                code = bd.cli()
+        finally:
+            bd.main = original
+
+        self.assertEqual(code, 1)
+        self.assertIn("docker is not on PATH", stderr.getvalue())
+
+    def test_a_reachable_program_returns_its_own_exit_code(self):
+        self.assertEqual(bd.run(["true"]), 0)
+        self.assertEqual(bd.run(["false"]), 1)
 
 
 if __name__ == "__main__":

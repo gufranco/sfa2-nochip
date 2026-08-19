@@ -1,4 +1,5 @@
 import importlib.util
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -58,6 +59,42 @@ class ManifestTest(unittest.TestCase):
         second = pack.manifest_line("b.sfc", b"same")
 
         self.assertEqual(first.split("  ")[0], second.split("  ")[0])
+
+
+class AssemblyFailureTest(unittest.TestCase):
+    @staticmethod
+    def result(returncode=1, stdout="", stderr=""):
+        return subprocess.CompletedProcess(
+            args=["python3", "build.py"], returncode=returncode, stdout=stdout, stderr=stderr
+        )
+
+    def test_the_message_names_the_region_and_the_exit_code(self):
+        message = pack.assembly_failure("jp", self.result(returncode=3))
+
+        self.assertIn("jp", message)
+        self.assertIn("3", message)
+
+    def test_what_the_assembler_said_is_carried_and_not_discarded(self):
+        message = pack.assembly_failure(
+            "usa", self.result(stdout="staged the rom", stderr="docker is not on PATH")
+        )
+
+        self.assertIn("docker is not on PATH", message)
+        self.assertIn("staged the rom", message)
+
+    def test_an_empty_stream_adds_no_heading(self):
+        message = pack.assembly_failure("jp", self.result(stderr="only this"))
+
+        self.assertNotIn("stdout", message)
+        self.assertIn("stderr", message)
+
+    def test_the_message_points_at_the_prerequisite(self):
+        message = pack.assembly_failure("jp", self.result())
+
+        self.assertIn("docker --version", message)
+
+    def test_a_failure_is_raised_as_its_own_kind_of_error(self):
+        self.assertTrue(issubclass(pack.AssemblyFailed, Exception))
 
 
 if __name__ == "__main__":
