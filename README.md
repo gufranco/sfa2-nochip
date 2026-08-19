@@ -518,6 +518,7 @@ container per toolchain.
 | [`spcfast.py`](spcfast.py) | applies the sample upload patch |
 | [`repeatload.py`](repeatload.py) | applies the skip for a sample list already loaded |
 | [`tools/compare_audio.py`](tools/compare_audio.py) | checks a build's uploads against a stock one, block by block |
+| [`tools/sample_audit.py`](tools/sample_audit.py) | reads sound RAM as the audio chip reads it, and reports samples a skipped upload would leave broken |
 | [`shinakuma.py`](shinakuma.py) | applies the Shin Akuma unlock |
 | [`gamefixes.py`](gamefixes.py) | applies the corrections |
 | [`prefight.py`](prefight.py) | computes the pre-fight table and redirects both of the builder's callers |
