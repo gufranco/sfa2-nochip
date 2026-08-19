@@ -30,6 +30,17 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install the formatter
+        run: npm clean-install --ignore-scripts
+
+      - name: Check that every JSON file is formatted
+        run: npm run format:check
+
       - name: Check formatting
         run: ruff format --check .
 
