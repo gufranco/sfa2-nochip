@@ -20,7 +20,7 @@ out, so it runs from any flash cartridge that can hold it.**
 </p>
 
 **No coprocessor** · **no mapper hardware** · **12,582,912 bytes** · both regions · pre-fight pause cut
-to **0.72 s** · **544** tests · **zero** bytes of game data shipped
+to **0.72 s** · **550** tests · **zero** bytes of game data shipped
 
 ```bash
 python3 tools/identify.py    # check your own cartridge dumps
@@ -282,7 +282,7 @@ applying it twice is a no-op.
 | Tool | Version | Why |
 |:-----|:--------|:----|
 | [Python 3](https://www.python.org/) | 3.12 | every analysis and build module |
-| [Docker](https://www.docker.com/) | any current | pins asar, the emulator and the reference decompressor |
+| [Docker](https://www.docker.com/) | any current, running | pins asar, the emulator and the reference decompressor |
 | Your own cartridge dumps | 4,194,304 bytes each | placed in `roms/` under the names below |
 
 Nothing is installed from a package index. The build containers pin their toolchains, run with no network
@@ -312,13 +312,17 @@ repository, so a build needs your retail dumps and nothing else.
 ### Build
 
 ```bash
-git clone https://github.com/gufranco/street-fighter-alpha-2-nochip.git
+git clone --recurse-submodules https://github.com/gufranco/street-fighter-alpha-2-nochip.git
 cd street-fighter-alpha-2-nochip
 # put your dumps in roms/, then:
 python3 tools/identify.py    # confirms each dump against its published digest
 python3 pack.py              # both regions into dist/, named with the version
 python3 pack.py jp           # or one region
 ```
+
+The models this project measures itself against are pinned as submodules, so the flag is not
+optional. If you already cloned without it, `git submodule update --init --recursive` fixes the
+clone you have.
 
 `pack.py` runs the build gate first and refuses to write anything if the stream table fails it. It
 produces `sfa2-usa-nochip-v<version>.sfc` and `sfz2-jp-nochip-v<version>.sfc` alongside a `SHA256SUMS`
@@ -565,7 +569,7 @@ verified by sha256, which is the reference the Python decompressor is tested aga
 | Shell | `shellcheck --severity=style --shell=bash scripts/*.sh` |
 | The image matrix | `python3 tools/rebuild_all.py && python3 tools/validate_all.py` |
 
-544 tests across 35 modules, 344 beside the analysis modules and 200 beside the tools. Several need the
+550 tests across 35 modules, 350 beside the analysis modules and 200 beside the tools. Several need the
 retail cartridges and skip cleanly without them, so a fresh clone runs the suite green.
 
 ### Conventions

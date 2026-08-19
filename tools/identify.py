@@ -9,7 +9,10 @@ sys.path.insert(0, str(ROOT))
 
 import hardware  # noqa: E402
 
-identity = hardware.load("romimage").identity
+try:
+    identity = hardware.load("romimage").identity
+except hardware.ModelMissing as unchecked:
+    raise SystemExit(str(unchecked)) from None
 
 Identity = namedtuple("Identity", "size crc32 md5 sha1 sha256")
 

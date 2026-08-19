@@ -9,8 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import hardware
 
-dump = hardware.load("romimage").dump
-rewrite = hardware.load("romimage").rewrite
+try:
+    image_package = hardware.load("romimage")
+except hardware.ModelMissing as unchecked:
+    raise SystemExit(str(unchecked)) from None
+
+dump = image_package.dump
+rewrite = image_package.rewrite
 
 
 ROOT = Path(__file__).resolve().parent
