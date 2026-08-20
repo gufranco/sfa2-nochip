@@ -144,24 +144,26 @@ def apply(rom):
     return write_checksum(patched)
 
 
-def main(argv):
+def main(argv, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    complain = say if complain is None else complain
     if len(argv) != 3:
-        print("usage: spcfast.py <source-rom> <output-rom>", file=sys.stderr)
+        complain("usage: spcfast.py <source-rom> <output-rom>")
         return 2
 
     source, output = Path(argv[1]), Path(argv[2])
     if source.resolve() == output.resolve():
-        print("refusing to patch the source ROM in place", file=sys.stderr)
+        complain("refusing to patch the source ROM in place")
         return 1
 
     rom = source.read_bytes()
     patched = apply(rom)
     output.write_bytes(patched)
 
-    print(f"  driver        {DRIVER_BASE + RECEIVE_LOOP:#08x}  two bytes per handshake")
-    print(f"  blank gates   {len(find_blank_gates(rom))} sites retired")
-    print(f"  patch         {patch_bytes()} bytes in {len(runs_for(rom))} runs")
-    print(f"[done] {output} ({len(patched):,} bytes)")
+    say(f"  driver        {DRIVER_BASE + RECEIVE_LOOP:#08x}  two bytes per handshake")
+    say(f"  blank gates   {len(find_blank_gates(rom))} sites retired")
+    say(f"  patch         {patch_bytes()} bytes in {len(runs_for(rom))} runs")
+    say(f"[done] {output} ({len(patched):,} bytes)")
     return 0
 
 

@@ -9,8 +9,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import hardware
 
-dump = hardware.load("romimage").dump
-rewrite = hardware.load("romimage").rewrite
+
+def load_images(load=hardware.load):
+    """The image handling model, or the reason a tree without it cannot go on.
+
+    A submodule is a pinned commit rather than content, so a clone without them
+    leaves named but empty directories. Saying that plainly beats a bare import
+    error from whatever happens to import first.
+    """
+    try:
+        return load("romimage")
+    except hardware.ModelMissing as unchecked:
+        raise SystemExit(str(unchecked)) from None
+
+
+image_package = load_images()
+
+dump = image_package.dump
+rewrite = image_package.rewrite
 
 
 ROOT = Path(__file__).resolve().parent
@@ -68,22 +84,46 @@ def entries_for(region):
     return rombuild.entries_from_map({str(source): length for source, length in table})
 
 
-def assemble_bypass(region, cart, workdir):
+class AssemblyFailed(Exception):
+    """The bypass patch did not assemble, carrying what the assembler said."""
+
+
+def assembly_failure(region, result):
+    said = [
+        f"the {region} bypass patch did not assemble: build.py exited {result.returncode}",
+        "",
+        "This step assembles the patch in a container, so Docker has to be installed",
+        "and running. Check it answers with: docker --version",
+    ]
+    for stream, raw in (("stdout", result.stdout), ("stderr", result.stderr)):
+        text = (raw or "").strip()
+        if text:
+            said += ["", f"--- build.py {stream} ---", text]
+    return "\n".join(said)
+
+
+def assemble_command(region, staged, produced_name):
+    """What assembling one region's bypass patch shells out to."""
+    return [
+        sys.executable,
+        "build.py",
+        REGIONS[region].bypass,
+        str(Path(staged).relative_to(ROOT)),
+        produced_name,
+    ]
+
+
+def _shell_out(args):
+    return subprocess.run(args, cwd=ROOT, check=False, capture_output=True, text=True)
+
+
+def assemble_bypass(region, cart, workdir, execute=_shell_out):
     staged = workdir / f"{region}-patched.sfc"
     staged.write_bytes(cart)
     produced_name = f"{region}-bypass.sfc"
-    subprocess.run(
-        [
-            sys.executable,
-            "build.py",
-            REGIONS[region].bypass,
-            str(staged.relative_to(ROOT)),
-            produced_name,
-        ],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-    )
+    result = execute(assemble_command(region, staged, produced_name))
+    if result.returncode != 0:
+        raise AssemblyFailed(assembly_failure(region, result))
     produced = ROOT / "asm" / produced_name
     image = produced.read_bytes()
     produced.unlink()
@@ -99,42 +139,52 @@ def build(region, workdir):
     return rewrite.declare_rom_only(image)
 
 
-def main(argv):
+def main(argv, make=None, gate_check=None, say=print, complain=None, dist=None):
+    """Every region built, with the two slow steps passed in so a run can be checked."""
+    complain = say if complain is None else complain
+    make = build if make is None else make
+    gate_check = gate.check if gate_check is None else gate_check
+    dist = DIST if dist is None else Path(dist)
+
     wanted = argv[1:] or sorted(REGIONS)
     unknown = [region for region in wanted if region not in REGIONS]
     if unknown:
-        print(f"unknown region: {', '.join(unknown)}", file=sys.stderr)
+        complain(f"unknown region: {', '.join(unknown)}")
         return 2
 
     missing = [str(REGIONS[r].retail) for r in wanted if not REGIONS[r].retail.exists()]
     if missing:
-        print("these retail dumps are not present:", file=sys.stderr)
+        complain("these retail dumps are not present:")
         for path in missing:
-            print(f"  {path}", file=sys.stderr)
+            complain(f"  {path}")
         return 1
 
     for region in wanted:
-        findings = gate.check(region)
+        findings = gate_check(region)
         if findings:
-            print(f"the {region} stream table does not pass the gate:", file=sys.stderr)
+            complain(f"the {region} stream table does not pass the gate:")
             for finding in findings:
-                print(f"  {finding}", file=sys.stderr)
+                complain(f"  {finding}")
             return 1
 
-    DIST.mkdir(exist_ok=True)
-    workdir = DIST / "work"
+    dist.mkdir(exist_ok=True)
+    workdir = dist / "work"
     workdir.mkdir(exist_ok=True)
 
     lines = []
     for region in wanted:
-        image = build(region, workdir)
+        try:
+            image = make(region, workdir)
+        except AssemblyFailed as failure:
+            complain(str(failure))
+            return 1
         name = output_name(region)
-        (DIST / name).write_bytes(image)
+        (dist / name).write_bytes(image)
         lines.append(manifest_line(name, image))
-        print(f"  {name}  {len(image):,} bytes", flush=True)
+        say(f"  {name}  {len(image):,} bytes")
 
-    (DIST / MANIFEST).write_text("\n".join(lines) + "\n")
-    print(f"  {MANIFEST}  {len(lines)} images")
+    (dist / MANIFEST).write_text("\n".join(lines) + "\n")
+    say(f"  {MANIFEST}  {len(lines)} images")
     return 0
 
 

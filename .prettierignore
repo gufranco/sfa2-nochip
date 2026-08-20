@@ -1,0 +1,13 @@
+pnpm-lock.yaml
+node_modules/
+.coverage
+build/
+mos65xx-python/
+snes-mapper-python/
+snes-rom-image-python/
+snes-sdd1-python/
+sony-s-dsp-python/
+sony-spc700-python/
+validated/
+validated-v2/
+validated-v3/

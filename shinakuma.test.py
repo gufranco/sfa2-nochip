@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -201,6 +202,59 @@ class RetailRomTest(unittest.TestCase):
             site = offset + shinakuma.PRECONDITION
 
             self.assertEqual(patched[site : site + 2], shinakuma.BRANCH)
+
+
+class GatelessTest(unittest.TestCase):
+    """An image with no unlock gate is refused rather than written out unchanged."""
+
+    def test_an_image_with_no_gate_is_refused(self):
+        with self.assertRaises(ValueError) as raised:
+            shinakuma.apply(bytes(0x40000))
+
+        self.assertIn("no Shin Akuma unlock gate", str(raised.exception))
+
+
+class EntryTest(unittest.TestCase):
+    """The command line, run with both streams collected rather than printed."""
+
+    def _paths(self):
+        where = Path(tempfile.mkdtemp())
+        source = where / "in.sfc"
+        source.write_bytes(USA.read_bytes())
+        return source, where / "out.sfc"
+
+    def test_too_few_arguments_are_refused_with_the_usage(self):
+        complained = []
+
+        code = shinakuma.main(["shinakuma.py"], say=lambda _l: None, complain=complained.append)
+
+        self.assertEqual(code, 2)
+        self.assertIn("usage", complained[0])
+
+    @unittest.skipUnless(USA.exists(), "the retail dump is supplied by the builder")
+    def test_patching_the_source_in_place_is_refused(self):
+        source, _ = self._paths()
+        complained = []
+
+        code = shinakuma.main(
+            ["shinakuma.py", str(source), str(source)],
+            say=lambda _l: None,
+            complain=complained.append,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn("in place", complained[0])
+
+    @unittest.skipUnless(USA.exists(), "the retail dump is supplied by the builder")
+    def test_a_run_writes_the_patched_image_and_says_what_it_did(self):
+        source, output = self._paths()
+        said = []
+
+        code = shinakuma.main(["shinakuma.py", str(source), str(output)], say=said.append)
+
+        self.assertEqual(code, 0)
+        self.assertTrue(output.exists())
+        self.assertTrue(said)
 
 
 if __name__ == "__main__":

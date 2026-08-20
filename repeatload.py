@@ -75,28 +75,30 @@ def apply(rom):
     return spcfast.write_checksum(patched)
 
 
-def report(rom):
+def report(rom, say=print):
     state = "already applied" if is_patched(rom) else "ready"
-    print(f"  hook      $C7:{HOOK_FILE & 0xFFFF:04X}  {REPLACED.hex(' ')} -> {hook().hex(' ')}")
-    print(f"  routine   $C7:{ROUTINE_ADDRESS:04X}  {len(ROUTINE)} bytes")
-    print(f"  marker    ${MARKER:06X}  two byte magic and the last list id")
-    print(f"  state     {state}")
+    say(f"  hook      $C7:{HOOK_FILE & 0xFFFF:04X}  {REPLACED.hex(' ')} -> {hook().hex(' ')}")
+    say(f"  routine   $C7:{ROUTINE_ADDRESS:04X}  {len(ROUTINE)} bytes")
+    say(f"  marker    ${MARKER:06X}  two byte magic and the last list id")
+    say(f"  state     {state}")
 
 
-def main(argv):
+def main(argv, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    complain = say if complain is None else complain
     if len(argv) != 3:
-        print("usage: repeatload.py <source-rom> <output-rom>", file=sys.stderr)
+        complain("usage: repeatload.py <source-rom> <output-rom>")
         return 2
 
     source, output = Path(argv[1]), Path(argv[2])
     if source.resolve() == output.resolve():
-        print("refusing to patch the source ROM in place", file=sys.stderr)
+        complain("refusing to patch the source ROM in place")
         return 1
 
     rom = source.read_bytes()
-    report(rom)
+    report(rom, say)
     output.write_bytes(apply(rom))
-    print(f"[done] {output} ({output.stat().st_size:,} bytes)")
+    say(f"[done] {output} ({output.stat().st_size:,} bytes)")
     return 0
 
 

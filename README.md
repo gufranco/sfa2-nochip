@@ -20,7 +20,7 @@ out, so it runs from any flash cartridge that can hold it.**
 </p>
 
 **No coprocessor** · **no mapper hardware** · **12,582,912 bytes** · both regions · pre-fight pause cut
-to **0.72 s** · **478** tests · **zero** bytes of game data shipped
+to **0.72 s** · **623** tests · **zero** bytes of game data shipped
 
 ```bash
 python3 tools/identify.py    # check your own cartridge dumps
@@ -282,7 +282,7 @@ applying it twice is a no-op.
 | Tool | Version | Why |
 |:-----|:--------|:----|
 | [Python 3](https://www.python.org/) | 3.12 | every analysis and build module |
-| [Docker](https://www.docker.com/) | any current | pins asar, the emulator and the reference decompressor |
+| [Docker](https://www.docker.com/) | any current, running | pins asar, the emulator and the reference decompressor |
 | Your own cartridge dumps | 4,194,304 bytes each | placed in `roms/` under the names below |
 
 Nothing is installed from a package index. The build containers pin their toolchains, run with no network
@@ -312,13 +312,18 @@ repository, so a build needs your retail dumps and nothing else.
 ### Build
 
 ```bash
-git clone https://github.com/gufranco/street-fighter-alpha-2-nochip.git
+git clone --recurse-submodules https://github.com/gufranco/street-fighter-alpha-2-nochip.git
 cd street-fighter-alpha-2-nochip
 # put your dumps in roms/, then:
 python3 tools/identify.py    # confirms each dump against its published digest
 python3 pack.py              # both regions into dist/, named with the version
 python3 pack.py jp           # or one region
 ```
+
+The models this project measures itself against are pinned as submodules, so the flag is not
+optional. If you already cloned without it, `git submodule update --init --recursive` fixes the
+clone you have. GitHub's Download ZIP button cannot work here at all: a source archive never
+carries submodule content, and nothing can add it afterwards. Clone it.
 
 `pack.py` runs the build gate first and refuses to write anything if the stream table fails it. It
 produces `sfa2-usa-nochip-v<version>.sfc` and `sfz2-jp-nochip-v<version>.sfc` alongside a `SHA256SUMS`
@@ -476,7 +481,8 @@ git clone --recurse-submodules https://github.com/gufranco/street-fighter-alpha-
 ```
 
 The models this project measures itself against are not written here. Each is its own repository,
-pinned as a submodule under [`emulators/`](emulators/), and each is held to something outside itself
+pinned as a submodule at the root of this one under the name of the repository it is, and each is
+held to something outside itself
 rather than to its author's confidence.
 
 | model | what proves it |
@@ -491,6 +497,22 @@ rather than to its author's confidence.
 They also start dirty. Memory and registers hold arbitrary but reproducible values rather than
 zeroes, because real hardware does, and anything here that wants a cleared machine has to ask for
 one. That turns a read of something never written from an accident into a question.
+
+## When something is wrong
+
+```bash
+python3 doctor.py
+```
+
+It looks at this machine and prints what is actually there: the Python, every model this project is
+pinned to and its version, whether the decompressor runs, which dumps are present and the SHA-256 of
+each, and whether the toolchain a build shells out to is reachable. It then asks every model for its
+own report and files what comes back under that model's name, so the whole chain is in one place
+rather than one layer of it.
+
+Nothing is inferred and nothing is hidden. A check that fails says what it saw, and a check that
+itself throws is reported as what it threw rather than taking the report down with it. Paste all of
+it into an issue.
 
 ## Repository guide
 
@@ -514,12 +536,21 @@ container per toolchain.
 | [`spcfast.py`](spcfast.py) | applies the sample upload patch |
 | [`repeatload.py`](repeatload.py) | applies the skip for a sample list already loaded |
 | [`tools/compare_audio.py`](tools/compare_audio.py) | checks a build's uploads against a stock one, block by block |
+| [`tools/sample_audit.py`](tools/sample_audit.py) | reads sound RAM as the audio chip reads it, and reports samples a skipped upload would leave broken |
+| [`tools/driver_run.py`](tools/driver_run.py) | runs the audio driver on the processor model and measures what its transfer costs, before the patch and after |
 | [`shinakuma.py`](shinakuma.py) | applies the Shin Akuma unlock |
 | [`gamefixes.py`](gamefixes.py) | applies the corrections |
 | [`prefight.py`](prefight.py) | computes the pre-fight table and redirects both of the builder's callers |
 | [`patchrun.py`](patchrun.py) | executes the assembled patch against a memory model |
 | [`hardware.py`](hardware.py) | puts the pinned hardware models on the import path |
-| [`emulators/`](emulators/) | those models, each its own repository, each held to its own oracle |
+| [`doctor.py`](doctor.py) | what is actually on this machine, the whole chain, printed for a bug report |
+| [`artifacts.manifest.json`](artifacts.manifest.json) | every dump this project reads, and what makes each one itself |
+| [`mos65xx-python/`](mos65xx-python/) | the 65816, held to a per-opcode suite |
+| [`sony-spc700-python/`](sony-spc700-python/) | the audio processor, held to its own suite |
+| [`sony-s-dsp-python/`](sony-s-dsp-python/) | the audio mixer, held to states taken from real music |
+| [`snes-sdd1-python/`](snes-sdd1-python/) | the decompressor, held to an independent encoder |
+| [`snes-mapper-python/`](snes-mapper-python/) | the cartridge map, held to a library of real cartridges |
+| [`snes-rom-image-python/`](snes-rom-image-python/) | image handling, held to that same library |
 | [`analyse.py`](analyse.py) | compression ratios and chunk indexing |
 | [`build.py`](build.py) | Docker wrapper around asar |
 | [`version.py`](version.py) | the release number, rewritten by [`scripts/set-version.sh`](scripts/set-version.sh) |
@@ -565,7 +596,7 @@ verified by sha256, which is the reference the Python decompressor is tested aga
 | Shell | `shellcheck --severity=style --shell=bash scripts/*.sh` |
 | The image matrix | `python3 tools/rebuild_all.py && python3 tools/validate_all.py` |
 
-478 tests across 32 modules, 406 beside the analysis modules and 72 beside the tools. Several need the
+623 tests across 37 modules, 354 beside the analysis modules and 269 beside the tools. Several need the
 retail cartridges and skip cleanly without them, so a fresh clone runs the suite green.
 
 ### Conventions
@@ -596,6 +627,20 @@ screen is the most useful report this project can receive, because it is the one
 here cannot find on their own. Say which image and region, and capture the frame if you can.
 
 ---
+
+## Contributing
+
+Measurements first. [CONTRIBUTING.md](CONTRIBUTING.md) has the gates a change is expected to pass,
+[SECURITY.md](SECURITY.md) says what belongs in a private report, and the
+[Code of Conduct](CODE_OF_CONDUCT.md) applies wherever this project is discussed.
+
+Never attach a cartridge or anything decoded out of one, and never link to somewhere one can be
+downloaded. A digest identifies a file without carrying it.
+
+## Citing this
+
+[CITATION.cff](CITATION.cff) is kept in step with the released version by the same script that
+stamps the release, so the version it names is the version that shipped.
 
 ## Acknowledgements
 

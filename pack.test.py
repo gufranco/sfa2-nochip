@@ -1,4 +1,7 @@
 import importlib.util
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -58,6 +61,185 @@ class ManifestTest(unittest.TestCase):
         second = pack.manifest_line("b.sfc", b"same")
 
         self.assertEqual(first.split("  ")[0], second.split("  ")[0])
+
+
+class AssemblyFailureTest(unittest.TestCase):
+    @staticmethod
+    def result(returncode=1, stdout="", stderr=""):
+        return subprocess.CompletedProcess(
+            args=["python3", "build.py"], returncode=returncode, stdout=stdout, stderr=stderr
+        )
+
+    def test_the_message_names_the_region_and_the_exit_code(self):
+        message = pack.assembly_failure("jp", self.result(returncode=3))
+
+        self.assertIn("jp", message)
+        self.assertIn("3", message)
+
+    def test_what_the_assembler_said_is_carried_and_not_discarded(self):
+        message = pack.assembly_failure(
+            "usa", self.result(stdout="staged the rom", stderr="docker is not on PATH")
+        )
+
+        self.assertIn("docker is not on PATH", message)
+        self.assertIn("staged the rom", message)
+
+    def test_an_empty_stream_adds_no_heading(self):
+        message = pack.assembly_failure("jp", self.result(stderr="only this"))
+
+        self.assertNotIn("stdout", message)
+        self.assertIn("stderr", message)
+
+    def test_the_message_points_at_the_prerequisite(self):
+        message = pack.assembly_failure("jp", self.result())
+
+        self.assertIn("docker --version", message)
+
+    def test_a_failure_is_raised_as_its_own_kind_of_error(self):
+        self.assertTrue(issubclass(pack.AssemblyFailed, Exception))
+
+
+class LoadingTest(unittest.TestCase):
+    """A tree with no submodules says so rather than failing on an import."""
+
+    def test_the_model_it_loads_is_the_image_handling_one(self):
+        self.assertTrue(hasattr(pack.load_images(), "dump"))
+
+    def test_a_tree_without_it_stops_with_what_the_loader_said(self):
+        def absent(_name):
+            raise pack.hardware.ModelMissing("run git submodule update")
+
+        with self.assertRaises(SystemExit) as raised:
+            pack.load_images(absent)
+
+        self.assertIn("git submodule update", str(raised.exception))
+
+
+class EntriesTest(unittest.TestCase):
+    def test_the_usa_table_becomes_entries(self):
+        self.assertTrue(pack.entries_for("usa"))
+
+    def test_and_the_japanese_one_becomes_different_entries(self):
+        self.assertNotEqual(pack.entries_for("jp"), pack.entries_for("usa"))
+
+
+class ShellingOutTest(unittest.TestCase):
+    def test_the_real_path_runs_the_command_it_was_given(self):
+        self.assertEqual(pack._shell_out(["true"]).returncode, 0)
+
+
+class AssembleTest(unittest.TestCase):
+    """What assembling a bypass patch shells out to, checked without Docker."""
+
+    def test_the_command_names_the_patch_and_where_the_output_goes(self):
+        found = pack.assemble_command("usa", pack.ROOT / "dist" / "x.sfc", "usa-bypass.sfc")
+
+        self.assertIn("build.py", found)
+        self.assertIn("usa-bypass.sfc", found)
+
+    def _under_root(self):
+        where = Path(tempfile.mkdtemp(dir=pack.ROOT))
+        self.addCleanup(shutil.rmtree, where, True)
+        return where
+
+    def test_an_assembler_that_fails_carries_what_it_said(self):
+        failed = type("Done", (), {"returncode": 1, "stdout": "out", "stderr": "asar said no"})
+
+        with self.assertRaises(pack.AssemblyFailed) as raised:
+            pack.assemble_bypass("usa", b"\x00" * 16, self._under_root(), lambda _a: failed)
+
+        self.assertIn("asar said no", str(raised.exception))
+
+    def test_and_says_that_docker_has_to_be_running(self):
+        failed = type("Done", (), {"returncode": 1, "stdout": "", "stderr": ""})
+
+        with self.assertRaises(pack.AssemblyFailed) as raised:
+            pack.assemble_bypass("usa", b"\x00" * 16, self._under_root(), lambda _a: failed)
+
+        self.assertIn("docker --version", str(raised.exception))
+
+    def test_an_assembler_that_succeeds_hands_back_the_image_it_wrote(self):
+        done = type("Done", (), {"returncode": 0, "stdout": "", "stderr": ""})
+        produced = pack.ROOT / "asm" / "usa-bypass.sfc"
+        produced.write_bytes(b"\xab" * 32)
+        self.addCleanup(lambda: produced.unlink() if produced.exists() else None)
+
+        found = pack.assemble_bypass("usa", b"\x00" * 16, self._under_root(), lambda _a: done)
+
+        self.assertEqual(found, b"\xab" * 32)
+
+
+class EntryTest(unittest.TestCase):
+    """A run from the command line, with the slow steps passed in."""
+
+    def test_a_region_nobody_knows_is_refused(self):
+        complained = []
+
+        code = pack.main(["pack.py", "mars"], say=lambda _l: None, complain=complained.append)
+
+        self.assertEqual(code, 2)
+        self.assertIn("unknown region", complained[0])
+
+    def test_a_dump_that_is_not_here_is_named_rather_than_guessed_at(self):
+        complained = []
+        original = pack.REGIONS["usa"]
+        pack.REGIONS["usa"] = original._replace(retail=Path("/nowhere/at/all.sfc"))
+        try:
+            code = pack.main(["pack.py", "usa"], say=lambda _l: None, complain=complained.append)
+        finally:
+            pack.REGIONS["usa"] = original
+
+        self.assertEqual(code, 1)
+        self.assertIn("not present", complained[0])
+        self.assertIn("nowhere", " ".join(complained))
+
+    def test_a_table_that_does_not_pass_the_gate_stops_the_build(self):
+        complained = []
+
+        code = pack.main(
+            ["pack.py", "usa"],
+            gate_check=lambda _region: ["a stream is missing"],
+            say=lambda _l: None,
+            complain=complained.append,
+        )
+
+        self.assertIn(code, (1,))
+        self.assertIn("does not pass the gate", " ".join(complained))
+
+    def test_a_patch_that_will_not_assemble_stops_it_too(self):
+        def boom(_region, _workdir):
+            raise pack.AssemblyFailed("asar said no")
+
+        complained = []
+        with tempfile.TemporaryDirectory() as tmp:
+            code = pack.main(
+                ["pack.py", "usa"],
+                make=boom,
+                gate_check=lambda _region: [],
+                say=lambda _l: None,
+                complain=complained.append,
+                dist=tmp,
+            )
+
+        self.assertEqual(code, 1)
+        self.assertIn("asar said no", complained[0])
+
+    def test_a_whole_run_writes_an_image_and_a_manifest(self):
+        said = []
+        with tempfile.TemporaryDirectory() as tmp:
+            code = pack.main(
+                ["pack.py", "usa"],
+                make=lambda _region, _workdir: b"\x00" * 64,
+                gate_check=lambda _region: [],
+                say=said.append,
+                dist=tmp,
+            )
+
+            self.assertEqual(code, 0)
+            written = (Path(tmp) / pack.MANIFEST).read_text()
+
+        self.assertIn(pack.output_name("usa"), written)
+        self.assertIn("64 bytes", " ".join(said))
 
 
 if __name__ == "__main__":

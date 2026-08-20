@@ -115,25 +115,26 @@ def apply(rom):
     return spcfast.write_checksum(patched)
 
 
-def main(argv):
+def main(argv, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    complain = say if complain is None else complain
     if len(argv) != 3:
-        print("usage: shinakuma.py <source-rom> <output-rom>", file=sys.stderr)
+        complain("usage: shinakuma.py <source-rom> <output-rom>")
         return 2
 
     source, output = Path(argv[1]), Path(argv[2])
     if source.resolve() == output.resolve():
-        print("refusing to patch the source ROM in place", file=sys.stderr)
+        complain("refusing to patch the source ROM in place")
         return 1
 
     rom = source.read_bytes()
-    gate = find_gate(rom)
     patched = apply(rom)
     output.write_bytes(patched)
 
-    if gate is not None:
-        print(f"unlock gate   {gate:#08x}")
-        print(f"branch site   {gate + PRECONDITION:#08x}  {BRANCH.hex(' ')}")
-    print(f"[done] {output} ({len(patched):,} bytes)")
+    gate = find_gate(rom)
+    say(f"unlock gate   {gate:#08x}")
+    say(f"branch site   {gate + PRECONDITION:#08x}  {BRANCH.hex(' ')}")
+    say(f"[done] {output} ({len(patched):,} bytes)")
     return 0
 
 

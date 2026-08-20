@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -230,6 +231,73 @@ class RetailRomTest(unittest.TestCase):
         patched = spcfast.apply(self.usa)
 
         self.assertEqual(patched[0x7FDE] | (patched[0x7FDF] << 8), spcfast.checksum(patched))
+
+
+class LoadingTest(unittest.TestCase):
+    def test_a_module_beside_this_one_is_loaded_by_path(self):
+        self.assertTrue(hasattr(spcfast._load("sdd1tables"), "__name__"))
+
+
+class FrameHookTest(unittest.TestCase):
+    """The frame hook is dormant, and these say exactly how dormant.
+
+    `FRAME_HOOK` is empty, so nothing is written at either site and `runs_for`
+    hands back the patch unchanged. The finder is generated alongside it by
+    tools/freeze_spcfast.py and waits for a hook to place, so what is pinned here
+    is the dormancy itself rather than the behaviour of code that cannot run.
+    """
+
+    def test_no_hook_is_placed_while_there_is_no_hook_to_place(self):
+        self.assertEqual(spcfast.FRAME_HOOK, b"")
+
+    def test_so_the_runs_are_the_patch_and_nothing_else(self):
+        self.assertEqual(spcfast.runs_for(bytes(0x400000)), spcfast.PATCH)
+
+    def test_and_the_two_sites_it_would_look_at_are_still_named(self):
+        self.assertEqual(len(spcfast.FRAME_HOOK_SITES), 2)
+
+
+class EntryTest(unittest.TestCase):
+    """The command line, run with both streams collected rather than printed."""
+
+    def _paths(self):
+        where = Path(tempfile.mkdtemp())
+        source = where / "in.sfc"
+        source.write_bytes(USA.read_bytes())
+        return source, where / "out.sfc"
+
+    def test_too_few_arguments_are_refused_with_the_usage(self):
+        complained = []
+
+        code = spcfast.main(["spcfast.py"], say=lambda _l: None, complain=complained.append)
+
+        self.assertEqual(code, 2)
+        self.assertIn("usage", complained[0])
+
+    @unittest.skipUnless(USA.exists(), "the retail dump is supplied by the builder")
+    def test_patching_the_source_in_place_is_refused(self):
+        source, _ = self._paths()
+        complained = []
+
+        code = spcfast.main(
+            ["spcfast.py", str(source), str(source)],
+            say=lambda _l: None,
+            complain=complained.append,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn("in place", complained[0])
+
+    @unittest.skipUnless(USA.exists(), "the retail dump is supplied by the builder")
+    def test_a_run_writes_the_patched_image_and_says_what_it_did(self):
+        source, output = self._paths()
+        said = []
+
+        code = spcfast.main(["spcfast.py", str(source), str(output)], say=said.append)
+
+        self.assertEqual(code, 0)
+        self.assertTrue(output.exists())
+        self.assertTrue(said)
 
 
 if __name__ == "__main__":

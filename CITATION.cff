@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: street-fighter-alpha-2-nochip
+message: >-
+  If you use this work, or the measurements it publishes, please cite it.
+type: software
+authors:
+  - given-names: Gustavo
+    family-names: Franco
+    alias: gufranco
+repository-code: https://github.com/gufranco/street-fighter-alpha-2-nochip
+url: https://github.com/gufranco/street-fighter-alpha-2-nochip
+abstract: >-
+  Rebuilds Street Fighter Alpha 2 for the Super Nintendo without its S-DD1
+  decompressor, expanding every compressed stream ahead of time so the cartridge
+  needs no coprocessor. The retail dump is the only authority: every stream is
+  located, decoded and checked against a decompressor held to an independent
+  encoder, and every dump the build reads is confirmed against a published digest
+  before a byte of it is used.
+keywords:
+  - super-nintendo
+  - street-fighter-alpha-2
+  - s-dd1
+  - rom-hacking
+  - decompression
+  - conformance
+license: MIT
+version: 1.3.1

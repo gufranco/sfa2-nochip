@@ -113,9 +113,11 @@ def report(rom_path):
     return 1 if failed else 0
 
 
-def main(argv):
+def main(argv, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    complain = say if complain is None else complain
     if len(argv) != 2:
-        print("usage: mapcheck.py <rom>", file=sys.stderr)
+        complain("usage: mapcheck.py <rom>")
         return 2
     return report(argv[1])
 

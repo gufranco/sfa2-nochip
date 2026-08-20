@@ -1,0 +1,249 @@
+import importlib.util
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_module(name, where):
+    spec = importlib.util.spec_from_file_location(name, where)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+driver_run = load_module("driver_run", Path(__file__).resolve().parent / "driver_run.py")
+spcfast = load_module("spcfast", ROOT / "spcfast.py")
+
+USA = ROOT / "roms" / "sfa2-usa-final.sfc"
+
+NEEDS_A_DUMP = unittest.skipUnless(
+    USA.exists(), "the retail dump is not on this machine, and nothing here ships one"
+)
+"""What the driver actually does can only be run against the cartridge it came from.
+
+Nobody may distribute that file, so on a build machine these report as skipped
+rather than as passed. Everything that can be checked without one is checked
+without one, and is above.
+"""
+
+JP = ROOT / "roms" / "sfz2-jp-final.sfc"
+
+PAYLOAD = bytes(range(0x30))
+
+
+class PortsTest(unittest.TestCase):
+    def test_the_first_triple_is_ready_before_anything_runs(self):
+        ports = driver_run.Ports(bytes(range(6)))
+
+        self.assertEqual([ports.read8(at) for at in range(0xF5, 0xF8)], [0, 1, 2])
+
+    def test_the_counter_starts_where_the_driver_starts(self):
+        ports = driver_run.Ports(bytes(range(6)))
+
+        self.assertEqual(ports.read8(0xF4), 0)
+
+    def test_an_echo_advances_to_the_next_triple(self):
+        ports = driver_run.Ports(bytes(range(6)))
+
+        ports.write8(0xF4, 0)
+
+        self.assertEqual([ports.read8(at) for at in range(0xF5, 0xF8)], [3, 4, 5])
+
+    def test_and_moves_the_counter_on_with_it(self):
+        ports = driver_run.Ports(bytes(range(6)))
+
+        ports.write8(0xF4, 0)
+
+        self.assertEqual(ports.read8(0xF4), 1)
+
+    def test_the_counter_wraps_at_a_byte(self):
+        ports = driver_run.Ports(bytes(3 * 300))
+        for step in range(300):
+            ports.write8(0xF4, step & 0xFF)
+
+        self.assertEqual(ports.read8(0xF4), 300 & 0xFF)
+
+    def test_a_payload_that_runs_out_says_so(self):
+        ports = driver_run.Ports(bytes(3))
+
+        ports.write8(0xF4, 0)
+
+        self.assertTrue(ports.spent)
+
+    def test_and_one_that_has_not_says_that_instead(self):
+        ports = driver_run.Ports(bytes(6))
+
+        ports.write8(0xF4, 0)
+
+        self.assertFalse(ports.spent)
+
+    def test_a_payload_shorter_than_a_triple_is_padded_rather_than_read_past(self):
+        ports = driver_run.Ports(bytes([9]))
+
+        self.assertEqual([ports.read8(at) for at in range(0xF5, 0xF8)], [9, 0, 0])
+
+    def test_everything_outside_the_ports_is_ordinary_memory(self):
+        ports = driver_run.Ports(bytes(3))
+
+        ports.write8(0x0200, 0x5A)
+
+        self.assertEqual(ports.read8(0x0200), 0x5A)
+
+    def test_and_the_driver_echo_is_remembered_for_the_caller_to_read(self):
+        ports = driver_run.Ports(bytes(6))
+
+        ports.write8(0xF5, 0x77)
+
+        self.assertEqual(ports.echoed[1], 0x77)
+
+    def test_an_echo_on_a_port_that_is_not_the_first_does_not_advance_anything(self):
+        ports = driver_run.Ports(bytes(6))
+
+        ports.write8(0xF6, 0x11)
+
+        self.assertEqual(ports.handshakes, 0)
+
+
+class SpreadTest(unittest.TestCase):
+    def test_spreading_leaves_one_byte_per_triple(self):
+        self.assertEqual(driver_run.spread(bytes([1, 2])), bytes([1, 0, 0, 2, 0, 0]))
+
+    def test_and_nothing_at_all_stays_nothing(self):
+        self.assertEqual(driver_run.spread(b""), b"")
+
+
+@NEEDS_A_DUMP
+class ImageTest(unittest.TestCase):
+    def test_the_driver_image_is_the_block_the_processor_is_handed(self):
+        image = driver_run.image_of(bytearray(USA.read_bytes()))
+
+        self.assertEqual(len(image), driver_run.IMAGE_BYTES)
+
+    def test_and_it_starts_where_the_receive_loop_was_disassembled_from(self):
+        rom = bytearray(USA.read_bytes())
+        patched = spcfast.apply(rom)
+        image = driver_run.image_of(patched)
+        at = spcfast.DRIVER_BASE + spcfast.RECEIVE_LOOP
+
+        self.assertEqual(image[spcfast.RECEIVE_LOOP], patched[at])
+
+    def test_the_two_tools_agree_on_where_the_driver_lives(self):
+        self.assertEqual(driver_run.DRIVER_BASE, spcfast.DRIVER_BASE)
+
+
+@NEEDS_A_DUMP
+class TransferTest(unittest.TestCase):
+    """The patched receive loop, run rather than read."""
+
+    def deliver(self, payload, rom=USA):
+        image = driver_run.image_of(spcfast.apply(bytearray(rom.read_bytes())))
+        return driver_run.deliver(image, payload, driver_run.DESTINATION)
+
+    def test_a_transfer_carries_three_streams_side_by_side(self):
+        found = self.deliver(PAYLOAD)
+
+        self.assertEqual(found.streams[0], PAYLOAD[0::3])
+        self.assertEqual(found.streams[1], PAYLOAD[1::3])
+        self.assertEqual(found.streams[2], PAYLOAD[2::3])
+
+    def test_the_first_stream_lands_where_the_driver_was_pointed(self):
+        found = self.deliver(bytes([0xAB, 0x00, 0x00]))
+
+        self.assertEqual(found.memory.read8(driver_run.DESTINATION), 0xAB)
+
+    def test_and_the_other_two_land_where_their_own_pointers_say(self):
+        found = self.deliver(bytes([0x00, 0xCD, 0xEF]))
+
+        self.assertEqual(found.memory.read8(driver_run.SECOND), 0xCD)
+        self.assertEqual(found.memory.read8(driver_run.THIRD), 0xEF)
+
+    def test_a_transfer_takes_one_handshake_for_every_three_bytes(self):
+        found = self.deliver(PAYLOAD)
+
+        self.assertEqual(found.handshakes, len(PAYLOAD) // 3)
+
+    def test_the_driver_echoes_the_counter_it_was_given(self):
+        found = self.deliver(bytes(range(9)))
+
+        self.assertEqual(found.memory.echoed[0], found.handshakes - 1)
+
+    def test_a_transfer_longer_than_a_page_carries_the_pointer_over(self):
+        payload = bytes(range(256)) * 3
+
+        found = self.deliver(payload)
+
+        self.assertEqual(found.streams[0], payload[0::3])
+
+    def test_the_japanese_build_receives_the_same_way(self):
+        found = self.deliver(PAYLOAD, rom=JP)
+
+        self.assertEqual(found.streams[0], PAYLOAD[0::3])
+
+    def test_a_transfer_stops_when_its_payload_does(self):
+        found = self.deliver(bytes(range(6)))
+
+        self.assertEqual(found.handshakes, 2)
+
+    def test_and_leaves_the_byte_after_it_alone(self):
+        found = self.deliver(bytes([0xFF] * 3))
+
+        self.assertNotEqual(found.memory.read8(driver_run.DESTINATION + 1), 0xFF)
+
+
+@NEEDS_A_DUMP
+class StockTest(unittest.TestCase):
+    """The driver before the patch, which is the thing the patch is faster than."""
+
+    def stock(self, payload, rom=USA):
+        image = driver_run.image_of(bytearray(rom.read_bytes()))
+        return driver_run.deliver_one_at_a_time(image, payload, driver_run.DESTINATION)
+
+    def test_the_stock_driver_takes_a_handshake_for_every_byte(self):
+        found = self.stock(PAYLOAD)
+
+        self.assertEqual(found.handshakes, len(PAYLOAD))
+
+    def test_and_carries_one_stream_rather_than_three(self):
+        found = self.stock(bytes(range(9)))
+
+        self.assertEqual(found.streams[0][:3], bytes([0, 1, 2]))
+
+    def test_the_patch_is_three_times_fewer_handshakes_for_the_same_bytes(self):
+        stock = self.stock(PAYLOAD)
+        fast = driver_run.deliver(
+            driver_run.image_of(spcfast.apply(bytearray(USA.read_bytes()))),
+            PAYLOAD,
+            driver_run.DESTINATION,
+        )
+
+        self.assertEqual(stock.handshakes, fast.handshakes * 3)
+
+    def test_and_fewer_instructions_than_that_because_it_reads_each_port_once(self):
+        stock = self.stock(PAYLOAD)
+        fast = driver_run.deliver(
+            driver_run.image_of(spcfast.apply(bytearray(USA.read_bytes()))),
+            PAYLOAD,
+            driver_run.DESTINATION,
+        )
+
+        self.assertGreater(stock.steps, fast.steps * 3)
+
+
+class EntryTest(unittest.TestCase):
+    @NEEDS_A_DUMP
+    def test_a_run_from_the_command_line_reports_what_it_measured(self):
+        self.assertEqual(driver_run.main([str(USA)]), 0)
+
+    def test_a_rom_it_cannot_read_is_reported_rather_than_raised(self):
+        self.assertEqual(driver_run.main([str(ROOT / "roms" / "nothing-here.sfc")]), 2)
+
+    def test_and_so_is_a_missing_argument(self):
+        self.assertEqual(driver_run.main([]), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

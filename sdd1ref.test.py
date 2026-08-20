@@ -81,7 +81,7 @@ class WireFormatTest(unittest.TestCase):
 
 
 @unittest.skipUnless(docker_available(), "docker is not available")
-@unittest.skipUnless(STAR_OCEAN.exists(), "reference roms are not present")
+@unittest.skipUnless(STAR_OCEAN.exists() and ALPHA2.exists(), "reference roms are not present")
 class DifferentialTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
