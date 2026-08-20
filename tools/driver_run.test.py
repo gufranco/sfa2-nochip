@@ -20,6 +20,16 @@ spcfast = load_module("spcfast", ROOT / "spcfast.py")
 
 USA = ROOT / "roms" / "sfa2-usa-final.sfc"
 
+NEEDS_A_DUMP = unittest.skipUnless(
+    USA.exists(), "the retail dump is not on this machine, and nothing here ships one"
+)
+"""What the driver actually does can only be run against the cartridge it came from.
+
+Nobody may distribute that file, so on a build machine these report as skipped
+rather than as passed. Everything that can be checked without one is checked
+without one, and is above.
+"""
+
 JP = ROOT / "roms" / "sfz2-jp-final.sfc"
 
 PAYLOAD = bytes(range(0x30))
@@ -106,6 +116,7 @@ class SpreadTest(unittest.TestCase):
         self.assertEqual(driver_run.spread(b""), b"")
 
 
+@NEEDS_A_DUMP
 class ImageTest(unittest.TestCase):
     def test_the_driver_image_is_the_block_the_processor_is_handed(self):
         image = driver_run.image_of(bytearray(USA.read_bytes()))
@@ -124,6 +135,7 @@ class ImageTest(unittest.TestCase):
         self.assertEqual(driver_run.DRIVER_BASE, spcfast.DRIVER_BASE)
 
 
+@NEEDS_A_DUMP
 class TransferTest(unittest.TestCase):
     """The patched receive loop, run rather than read."""
 
@@ -182,6 +194,7 @@ class TransferTest(unittest.TestCase):
         self.assertNotEqual(found.memory.read8(driver_run.DESTINATION + 1), 0xFF)
 
 
+@NEEDS_A_DUMP
 class StockTest(unittest.TestCase):
     """The driver before the patch, which is the thing the patch is faster than."""
 
@@ -221,6 +234,7 @@ class StockTest(unittest.TestCase):
 
 
 class EntryTest(unittest.TestCase):
+    @NEEDS_A_DUMP
     def test_a_run_from_the_command_line_reports_what_it_measured(self):
         self.assertEqual(driver_run.main([str(USA)]), 0)
 
