@@ -117,20 +117,22 @@ def report(rom):
     )
 
 
-def main(argv):
+def main(argv, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    complain = say if complain is None else complain
     if len(argv) != 3:
-        print("usage: prefight.py <source-rom> <output-rom>", file=sys.stderr)
+        complain("usage: prefight.py <source-rom> <output-rom>")
         return 2
 
     source, output = Path(argv[1]), Path(argv[2])
     if source.resolve() == output.resolve():
-        print("refusing to patch the source ROM in place", file=sys.stderr)
+        complain("refusing to patch the source ROM in place")
         return 1
 
     rom = source.read_bytes()
     report(rom)
     output.write_bytes(apply(rom))
-    print(f"[done] {output} ({output.stat().st_size:,} bytes)")
+    say(f"[done] {output} ({output.stat().st_size:,} bytes)")
     return 0
 
 

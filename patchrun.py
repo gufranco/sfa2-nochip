@@ -15,6 +15,8 @@ import rombuild  # noqa: E402
 ENTRY_POINTS = {0x00: 0x35CD84, 0x10: 0x35CDD0, 0x70: 0x35CE1C}
 VARIABLE_ENTRY = 0x35CE68
 
+EXAMPLE_LIMIT = 5
+
 DMA_BASE = 0x4300
 DMA_TRIGGER = 0x420B
 DMA_BLOCK = range(0x4300, 0x4380)
@@ -88,34 +90,39 @@ def translate(memory, source, channel=0x00, entry=None, dmap=ARMED_DMAP, **regis
     return Outcome(destination, memory.ram[base], cpu)
 
 
-def main():
-    if len(sys.argv) < 4:
-        print(
-            "usage: patchrun.py <built-image> <patched-rom> <tagged-rom>",
-            file=sys.stderr,
-        )
-        return 2
-
-    image = dump.read(sys.argv[1])
-    entries = rombuild.load_entries(dump.read(sys.argv[3]))
-    expected = rombuild.build(dump.read(sys.argv[2]), entries).destinations
-    memory = SnesMemory(image)
-
+def walk(memory, entries, expected, say):
+    """Every stream translated on the processor, and where it disagreed."""
     failures = 0
     for entry in entries:
         outcome = translate(memory, entry.source)
         if outcome.destination != expected[entry.index]:
             failures += 1
-            if failures <= 5:
-                print(
+            if failures <= EXAMPLE_LIMIT:
+                say(
                     f"  stream {entry.index}: got {outcome.destination:#08x}, "
                     f"want {expected[entry.index]:#08x}"
                 )
         elif outcome.dmap & FIXED_ADDRESS_BIT:
             failures += 1
-            print(f"  stream {entry.index}: fixed-address bit still set")
+            say(f"  stream {entry.index}: fixed-address bit still set")
+    return failures
 
-    print(f"  executed {len(entries):,} streams, {failures} failures")
+
+def main(argv=None, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    argv = sys.argv if argv is None else argv
+    complain = say if complain is None else complain
+
+    if len(argv) < 4:
+        complain("usage: patchrun.py <built-image> <patched-rom> <tagged-rom>")
+        return 2
+
+    image = dump.read(argv[1])
+    entries = rombuild.load_entries(dump.read(argv[3]))
+    expected = rombuild.build(dump.read(argv[2]), entries).destinations
+
+    failures = walk(SnesMemory(image), entries, expected, say)
+    say(f"  executed {len(entries):,} streams, {failures} failures")
     return 1 if failures else 0
 
 

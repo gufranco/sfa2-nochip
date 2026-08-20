@@ -118,11 +118,13 @@ def check(region):
     return findings
 
 
-def main(argv):
+def main(argv, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    complain = say if complain is None else complain
     wanted = argv[1:] or sorted(RETAIL)
     unknown = [region for region in wanted if region not in RETAIL]
     if unknown:
-        print(f"unknown region: {', '.join(unknown)}", file=sys.stderr)
+        complain(f"unknown region: {', '.join(unknown)}")
         return 2
 
     failed = False
@@ -131,11 +133,11 @@ def main(argv):
         entries = table(region)
         if findings:
             failed = True
-            print(f"  {region}: {len(entries):,} streams, FAIL")
+            say(f"  {region}: {len(entries):,} streams, FAIL")
             for finding in findings:
-                print(f"    {finding}")
+                say(f"    {finding}")
         else:
-            print(f"  {region}: {len(entries):,} streams, ok")
+            say(f"  {region}: {len(entries):,} streams, ok")
     return 1 if failed else 0
 
 

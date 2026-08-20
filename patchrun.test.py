@@ -226,5 +226,29 @@ class ReferenceBuildTest(unittest.TestCase):
         self.assertIsNotNone(memory.triggered)
 
 
+class EntryTest(unittest.TestCase):
+    def test_too_few_arguments_are_refused_with_the_usage(self):
+        complained = []
+
+        code = patchrun.main(["patchrun.py"], say=lambda _l: None, complain=complained.append)
+
+        self.assertEqual(code, 2)
+        self.assertIn("usage", complained[0])
+
+    @unittest.skipUnless(
+        IMAGE.exists() and PATCHED.exists() and TAGGED.exists(),
+        "the built image is not present",
+    )
+    def test_a_whole_run_reports_how_many_streams_it_executed(self):
+        said = []
+
+        code = patchrun.main(
+            ["patchrun.py", str(IMAGE), str(PATCHED), str(TAGGED)], say=said.append
+        )
+
+        self.assertEqual(code, 0)
+        self.assertIn("executed", said[-1])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -322,33 +322,35 @@ def apply(rom):
     return spcfast.write_checksum(patched)
 
 
-def report(rom):
+def report(rom, say=print):
     found = survey(rom)
     for fix in FIXES:
         at = locate(rom, fix.stock) or locate(rom, fix.patched)
         where = f"{at:#08x}" if at is not None else "not present"
-        print(f"  {fix.name:<32} {found[fix.name]:<8} {where}  regions {', '.join(fix.regions)}")
+        say(f"  {fix.name:<32} {found[fix.name]:<8} {where}  regions {', '.join(fix.regions)}")
     for call in EMPTY_CALLS:
         sites = empty_call_sites(rom, call) or retired_sites(rom, call)
-        print(f"  {call.name:<32} {found[call.name]:<8} {len(sites)} call sites")
-    print(f"  {changed_bytes(rom)} bytes to change across {len(FIXES) + len(EMPTY_CALLS)} entries")
+        say(f"  {call.name:<32} {found[call.name]:<8} {len(sites)} call sites")
+    say(f"  {changed_bytes(rom)} bytes to change across {len(FIXES) + len(EMPTY_CALLS)} entries")
 
 
-def main(argv):
+def main(argv, say=print, complain=None):
+    """The command line, with both streams passed in so a run can be checked."""
+    complain = say if complain is None else complain
     if len(argv) != 3:
-        print("usage: gamefixes.py <source-rom> <output-rom>", file=sys.stderr)
+        complain("usage: gamefixes.py <source-rom> <output-rom>")
         return 2
 
     source, output = Path(argv[1]), Path(argv[2])
     if source.resolve() == output.resolve():
-        print("refusing to patch the source ROM in place", file=sys.stderr)
+        complain("refusing to patch the source ROM in place")
         return 1
 
     rom = source.read_bytes()
-    report(rom)
+    report(rom, say)
     patched = apply(rom)
     output.write_bytes(patched)
-    print(f"[done] {output} ({len(patched):,} bytes)")
+    say(f"[done] {output} ({len(patched):,} bytes)")
     return 0
 
 
