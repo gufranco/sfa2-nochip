@@ -46,3 +46,44 @@ ignore = [
 # the rest of the report with it, which is the one outcome it must avoid.
 "doctor.py" = ["BLE001"]
 "*.test.py" = ["PLR2004"]
+
+[tool.coverage.run]
+branch = true
+source = ["."]
+# The models are measured in their own repositories, where each is held to its
+# own oracle and its own gate. Measuring them again from here would report the
+# fraction of somebody else's project this one happens to reach, which is a
+# number with no meaning and no way to move.
+omit = [
+  "mos65xx-python/*",
+  "snes-mapper-python/*",
+  "snes-rom-image-python/*",
+  "snes-sdd1-python/*",
+  "sony-s-dsp-python/*",
+  "sony-spc700-python/*",
+  "build/*",
+  "dist/*",
+  "emu/*",
+  "emu-stock/*",
+  "validated/*",
+  "validated-v2/*",
+  "validated-v3/*",
+]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+exclude_also = [
+  # The command line guard hands argv to a function that is itself tested, so
+  # there is nothing behind it left to exercise. Importing the module to cover
+  # the guard would run the tool rather than test it.
+  'if __name__ == "__main__":',
+  # One function composes the whole build over a retail dump: it reads the
+  # cartridge, runs six patches over it in order, and writes an image. Its inputs
+  # cannot exist on a machine that does not have the cartridge, and a synthetic
+  # four megabyte stand-in would satisfy each step by construction and prove
+  # nothing about any of them. It is measured by running it, in pack.retail.test.py,
+  # which reports as skipped where the dump is absent.
+  'def build\(region, workdir\):',
+]

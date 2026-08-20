@@ -144,21 +144,24 @@ def run(manifest, roms=ROMS, wanted=()):
     ]
 
 
-def main(argv):
-    manifest = read_manifest()
+def main(argv, manifest=None, say=print, complain=None):
+    """Every declared dump checked, with both streams passed in so a run can be tested."""
+    complain = say if complain is None else complain
+    manifest = read_manifest() if manifest is None else manifest
+
     findings = run(manifest, wanted=tuple(argv[1:]))
     if not findings:
-        print("  no artifact in the manifest matches that name", file=sys.stderr)
+        complain("  no artifact in the manifest matches that name")
         return 2
 
     usable = 0
     failed = False
     for finding in findings:
-        print(explain(finding))
+        say(explain(finding))
         usable += finding.state == STATE_OK
         failed = failed or blocking(finding)
 
-    print(f"\n  {usable} of {len(findings)} declared dumps present and correct")
+    say(f"\n  {usable} of {len(findings)} declared dumps present and correct")
     return 1 if failed or usable == 0 else 0
 
 

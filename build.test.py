@@ -125,5 +125,103 @@ class ToolchainTest(unittest.TestCase):
         self.assertEqual(bd.run(["false"]), 1)
 
 
+class RunTest(unittest.TestCase):
+    """What a build shells out to, checked without shelling out."""
+
+    def test_a_command_is_printed_before_it_runs(self):
+        said = []
+
+        bd.run(["docker", "build"], execute=lambda _args: 0, say=said.append)
+
+        self.assertIn("docker build", said[0])
+
+    def test_and_what_it_returned_comes_back(self):
+        self.assertEqual(bd.run(["x"], execute=lambda _args: 3, say=lambda _line: None), 3)
+
+
+class StagingTest(unittest.TestCase):
+    def test_patching_the_source_in_place_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            where = Path(tmp)
+            (where / "in.sfc").write_bytes(b"\x00" * 16)
+
+            with self.assertRaises(ValueError):
+                bd.stage_rom(where / "in.sfc", where, "in.sfc")
+
+
+class ShellingOutTest(unittest.TestCase):
+    """That the real path runs the command, checked with one that does nothing."""
+
+    def test_with_nothing_passed_in_it_runs_the_command_itself(self):
+        code = bd.run(["true"], say=lambda _line: None)
+
+        self.assertEqual(code, 0)
+
+
+class EntryTest(unittest.TestCase):
+    def test_asking_for_the_image_alone_builds_only_that(self):
+        ran = []
+
+        code = bd.main(
+            ["bd.py", "--image"], execute=lambda args: ran.append(args) or 0, say=lambda _l: None
+        )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(ran), 1)
+
+    def test_too_few_arguments_are_refused_with_the_usage(self):
+        said = []
+
+        code = bd.main(["bd.py", "patch.asm"], say=lambda _l: None, complain=said.append)
+
+        self.assertEqual(code, 2)
+        self.assertIn("usage", said[0])
+
+    def test_an_image_that_will_not_build_stops_before_anything_is_staged(self):
+        said = []
+
+        code = bd.main(
+            ["bd.py", "patch.asm", "in.sfc", "out.sfc"],
+            execute=lambda _args: 1,
+            say=lambda _l: None,
+            complain=said.append,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn("failed to build", said[0])
+
+    def test_a_whole_run_stages_the_rom_and_patches_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            where = Path(tmp)
+            (where / "patch.asm").write_text("; nothing")
+            (where / "in.sfc").write_bytes(b"\x00" * 32)
+            ran = []
+
+            code = bd.main(
+                ["bd.py", str(where / "patch.asm"), str(where / "in.sfc"), "out.sfc"],
+                execute=lambda args: ran.append(args) or 0,
+                say=lambda _l: None,
+            )
+
+            self.assertEqual(code, 0)
+            self.assertEqual(len(ran), 2)
+            self.assertTrue((where / "out.sfc").exists())
+
+    def test_a_patch_that_fails_is_reported_as_what_it_returned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            where = Path(tmp)
+            (where / "patch.asm").write_text("; nothing")
+            (where / "in.sfc").write_bytes(b"\x00" * 32)
+            answers = iter([0, 4])
+
+            code = bd.main(
+                ["bd.py", str(where / "patch.asm"), str(where / "in.sfc"), "out.sfc"],
+                execute=lambda _args: next(answers),
+                say=lambda _l: None,
+            )
+
+            self.assertEqual(code, 4)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

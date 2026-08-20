@@ -265,5 +265,81 @@ class ShippedManifestTest(unittest.TestCase):
         self.assertIn("artifacts", raw)
 
 
+class EntryTest(unittest.TestCase):
+    """A run from the command line, with the manifest passed in."""
+
+    def _manifest(self, artifacts):
+        return {"decides": "sha256", "artifacts": artifacts, "known_bad": [], "not_this": []}
+
+    def _artifact(self, filename="nothing-here.sfc", accepted=()):
+        return {
+            "name": "Something",
+            "filename": filename,
+            "accepted": list(accepted),
+            "provenance": "made up",
+        }
+
+    def test_a_name_nothing_matches_is_reported_rather_than_passing(self):
+        complained = []
+
+        code = ident.main(
+            ["identify.py", "nothing-at-all.sfc"],
+            manifest=self._manifest([self._artifact()]),
+            say=lambda _l: None,
+            complain=complained.append,
+        )
+
+        self.assertEqual(code, 2)
+        self.assertIn("no artifact", complained[0])
+
+    def test_a_dump_that_is_not_here_is_reported_and_fails(self):
+        said = []
+
+        code = ident.main(
+            ["identify.py"],
+            manifest=self._manifest([self._artifact(accepted=[{"size": 1, "sha256": "ab" * 32}])]),
+            say=said.append,
+        )
+
+        self.assertEqual(code, 1)
+        self.assertIn("missing", " ".join(said))
+
+    def test_a_manifest_with_no_digests_yet_says_so(self):
+        said = []
+
+        ident.main(["identify.py"], manifest=self._manifest([self._artifact()]), say=said.append)
+
+        self.assertIn("no digest published", " ".join(said))
+
+    def test_every_line_it_prints_names_the_file_it_is_about(self):
+        said = []
+
+        ident.main(["identify.py"], manifest=self._manifest([self._artifact()]), say=said.append)
+
+        self.assertIn("nothing-here.sfc", said[0])
+
+
+class HintTest(unittest.TestCase):
+    """What to do about a dump that is here and wrong, which is the useful case."""
+
+    def _finding(self, state):
+        return ident.Finding("Something", "a.sfc", state, "", None, None)
+
+    def test_a_file_of_the_wrong_size_suggests_a_copier_header_or_a_split_set(self):
+        self.assertIn("copier", ident.repair_hint(self._finding(ident.STATE_WRONG_SIZE)))
+
+    def test_a_file_of_the_wrong_content_names_what_it_might_be(self):
+        self.assertIn("revision", ident.repair_hint(self._finding(ident.STATE_WRONG_CONTENT)))
+
+    def test_a_file_that_is_another_entry_says_to_rename_it(self):
+        self.assertIn("rename", ident.repair_hint(self._finding(ident.STATE_OTHER_ENTRY)))
+
+    def test_a_known_bad_dump_says_to_find_another_copy(self):
+        self.assertIn("another copy", ident.repair_hint(self._finding(ident.STATE_KNOWN_BAD)))
+
+    def test_and_a_dump_that_is_right_needs_no_hint(self):
+        self.assertEqual(ident.repair_hint(self._finding(ident.STATE_OK)), "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

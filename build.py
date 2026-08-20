@@ -53,44 +53,51 @@ def missing_message(program):
     )
 
 
-def run(args):
-    print("  $ " + " ".join(args), flush=True)
+def run(args, execute=None, say=print):
+    """One command, printed before it runs so a failing build says what it ran."""
+    say("  $ " + " ".join(args))
+    if execute is None:
+        execute = _shell_out
     try:
-        result = subprocess.run(args, text=True, check=False)
+        return execute(args)
     except FileNotFoundError as absent:
         raise ToolchainMissing(missing_message(args[0])) from absent
-    return result.returncode
+
+
+def _shell_out(args):
+    return subprocess.run(args, text=True, check=False).returncode
 
 
 def wants_image_only(argv):
     return len(argv) == 2 and argv[1] == "--image"
 
 
-def main():
-    if wants_image_only(sys.argv):
-        return run(build_image_command())
+def main(argv=None, execute=None, say=print, complain=None):
+    """The command line, with the shelling out passed in so it can be checked."""
+    argv = sys.argv if argv is None else argv
+    complain = say if complain is None else complain
 
-    if len(sys.argv) < 4:
-        print("usage: build.py <patch.asm> <source-rom> <output-rom>", file=sys.stderr)
-        print(
-            "       build.py --image        (build the toolchain image only)",
-            file=sys.stderr,
-        )
+    if wants_image_only(argv):
+        return run(build_image_command(), execute, say)
+
+    if len(argv) < 4:
+        complain("usage: build.py <patch.asm> <source-rom> <output-rom>")
+        complain("       build.py --image        (build the toolchain image only)")
         return 2
 
-    patch, source, output = sys.argv[1], Path(sys.argv[2]), sys.argv[3]
+    patch, source, output = argv[1], Path(argv[2]), argv[3]
     work = Path(patch).resolve().parent
 
-    if run(build_image_command()) != 0:
-        print("toolchain image failed to build", file=sys.stderr)
+    if run(build_image_command(), execute, say) != 0:
+        complain("toolchain image failed to build")
         return 1
 
     staged = stage_rom(source, work, output)
-    print(f"  staged {source} -> {staged}")
+    say(f"  staged {source} -> {staged}")
 
-    code = run(patch_command(work, Path(patch).name, output))
+    code = run(patch_command(work, Path(patch).name, output), execute, say)
     if code == 0:
-        print(f"[done] {staged} ({staged.stat().st_size:,} bytes)")
+        say(f"[done] {staged} ({staged.stat().st_size:,} bytes)")
     return code
 
 

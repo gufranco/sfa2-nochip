@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import doctor
+import hardware
 
 
 class Complaint(Exception):
@@ -221,6 +222,51 @@ class BeneathTest(unittest.TestCase):
         found = doctor.examine(beneath=list)
 
         self.assertTrue(all(one.ok for one in found if " / " in one.name))
+
+
+class AskingEachTest(unittest.TestCase):
+    """Which models get asked for a report, and which are passed over."""
+
+    def _a_doctor(self, findings):
+        return type("Underneath", (), {"examine": staticmethod(lambda: findings)})
+
+    def test_a_model_that_is_not_checked_out_is_passed_over(self):
+        found = doctor._ask_each(["nothing"], lambda _name: "/nowhere/at/all", None)
+
+        self.assertEqual(found, [])
+
+    def test_a_model_with_no_doctor_is_passed_over_too(self):
+        def absent(_name):
+            raise ModuleNotFoundError("no doctor there")
+
+        found = doctor._ask_each(["mos65xx"], hardware.root_of, absent)
+
+        self.assertEqual(found, [])
+
+    def test_a_model_whose_doctor_will_not_run_is_left_to_raise(self):
+        def broken(_name):
+            raise Complaint("the doctor there exploded")
+
+        with self.assertRaises(Complaint):
+            doctor._ask_each(["mos65xx"], hardware.root_of, broken)
+
+    def test_a_model_not_yet_on_the_import_path_is_put_there(self):
+        where = Path(tempfile.mkdtemp())
+        (where / "something").write_text("here")
+        self.addCleanup(lambda: sys.path.remove(str(where)) if str(where) in sys.path else None)
+
+        doctor._ask_each(["made-up"], lambda _name: where, lambda _name: self._a_doctor([]))
+
+        self.assertIn(str(where), sys.path)
+
+    def test_what_a_model_reports_comes_back_under_its_directory_name(self):
+        finding = doctor.Finding("python", True, "some version")
+
+        found = doctor._ask_each(
+            ["mos65xx"], hardware.root_of, lambda _name: self._a_doctor([finding])
+        )
+
+        self.assertEqual(found, [("mos65xx-python", finding)])
 
 
 class ReportTest(unittest.TestCase):

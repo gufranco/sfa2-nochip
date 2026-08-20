@@ -207,18 +207,23 @@ def _default_beneath():
     model whose doctor is here and will not run is a different thing entirely and
     is left to raise, because that is a real fault on this machine.
     """
+    return _ask_each(sorted(hardware.PACKAGES), hardware.root_of, importlib.import_module)
+
+
+def _ask_each(packages, locate, load):
+    """Each named model asked for its report, skipping the ones that have none."""
     found = []
-    for package in sorted(hardware.PACKAGES):
-        where = hardware.root_of(package)
-        if not Path(where).is_dir():
+    for package in packages:
+        where = Path(locate(package))
+        if not where.is_dir():
             continue
         if str(where) not in sys.path:
             sys.path.insert(0, str(where))
         try:
-            underneath = importlib.import_module(f"{package}.doctor")
+            underneath = load(f"{package}.doctor")
         except ModuleNotFoundError:
             continue
-        found.extend((Path(where).name, one) for one in underneath.examine())
+        found.extend((where.name, one) for one in underneath.examine())
     return found
 
 
