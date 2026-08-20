@@ -1,0 +1,58 @@
+name: The rebuilt cartridge differs from the retail one
+description: Something plays, draws or sounds different from the cartridge it came from
+labels: ["bug", "fidelity"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The retail cartridge is the authority here. An image that differs from it
+        in anything a player can see is wrong by definition, so what this asks
+        for is where it happens and what both sides do.
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: What the doctor says
+      description: Run `python3 doctor.py` and paste all of it.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: where
+    attributes:
+      label: Where in the game
+      description: The exact place, reachable by somebody who has never seen it.
+      placeholder: "Ryu versus Sagat, second round, the stage in Thailand"
+    validations:
+      required: true
+
+  - type: input
+    id: got
+    attributes:
+      label: What the rebuilt cartridge does
+      placeholder: "the background tiles above the fighters are scrambled"
+    validations:
+      required: true
+
+  - type: input
+    id: wanted
+    attributes:
+      label: What the retail cartridge does
+      description: |
+        Say how you know, and run both on the same emulator before comparing:
+        two emulators disagreeing about the same image is a different report.
+      placeholder: "the background is drawn correctly, on the same emulator"
+    validations:
+      required: true
+
+  - type: input
+    id: region
+    attributes:
+      label: Which region and which build
+      description: |
+        The image name from dist/ carries the version it was built at, and both
+        regions are built from different dumps.
+      placeholder: "sfa2-usa-nochip-v1.3.1.sfc"
+    validations:
+      required: true

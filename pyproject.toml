@@ -1,7 +1,18 @@
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-extend-exclude = ["build", "emulators", "validated", "validated-v2", "validated-v3"]
+extend-exclude = [
+  "build",
+  "mos65xx-python",
+  "snes-mapper-python",
+  "snes-rom-image-python",
+  "snes-sdd1-python",
+  "sony-s-dsp-python",
+  "sony-spc700-python",
+  "validated",
+  "validated-v2",
+  "validated-v3",
+]
 
 [tool.ruff.lint]
 select = [
@@ -29,4 +40,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# The doctor exists so that nothing fails silently, which means it has to survive
+# whatever a check throws at it and report that rather than propagate it. A
+# narrower catch would let an unforeseen failure escape as a traceback and take
+# the rest of the report with it, which is the one outcome it must avoid.
+"doctor.py" = ["BLE001"]
 "*.test.py" = ["PLR2004"]

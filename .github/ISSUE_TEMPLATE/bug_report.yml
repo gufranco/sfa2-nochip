@@ -1,0 +1,84 @@
+name: Something is wrong
+description: The converted cartridge misbehaves, or a check will not run
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most reports here turn out to be a missing submodule, a dump that is not
+        the one the manifest wants, or a toolchain the build cannot reach. All
+        three look identical from outside, so the first field asks you to run one
+        command that tells all of us which it is.
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: What the doctor says
+      description: |
+        Run `python3 doctor.py` from the repository and paste all of it, including
+        every line that did not pass. Do not trim it: the lines that failed are
+        the ones worth reading, and the digests are what settle which files you
+        have.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it goes wrong
+      options:
+        - Building an image
+        - Running the converted cartridge
+        - A check or a tool in this repository
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: |
+        the rebuilt cartridge should play the same as the retail one
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened instead
+      description: |
+        The exact output or the whole traceback. Paste it rather than describing
+        it: a summary of an error loses the part that identifies it.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: The shortest thing that shows it
+      description: Commands we can run as they stand, with no editing.
+      render: shell
+      placeholder: |
+        python3 gate.py usa
+    validations:
+      required: true
+
+  - type: input
+    id: emulator
+    attributes:
+      label: What you ran it on
+      description: The emulator or the hardware, and its version.
+      placeholder: "snes9x 1.63, or a Super Nt on firmware 6.9"
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: The doctor output above is complete rather than trimmed
+          required: true
+        - label: I own the cartridge I am naming, and I have attached nothing from it
+          required: true

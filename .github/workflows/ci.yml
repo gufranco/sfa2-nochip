@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install ruff
         run: pipx install ruff==0.16.3
@@ -30,16 +30,18 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*
-          cache: npm
+          cache: pnpm
 
       - name: Install the formatter
-        run: npm clean-install --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Check that every JSON file is formatted
-        run: npm run format:check
+      - name: Check that every JSON and YAML file is formatted
+        run: pnpm run format:check
 
       - name: Check formatting
         run: ruff format --check .
@@ -67,7 +69,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Run every test module
         run: |
@@ -95,17 +97,21 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v6
         with:
           node-version: lts/*
 
       - name: Install release tooling
-        run: npm clean-install
+        run: pnpm install --frozen-lockfile
 
-      - name: Verify provenance of the release tooling
-        run: npm audit signatures
+      # npm's signature verification has no equivalent here, so what is checked
+      # is the advisory database rather than the provenance of each tarball.
+      - name: Check the release tooling against known advisories
+        run: pnpm audit --audit-level=high
 
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+        run: pnpm exec semantic-release

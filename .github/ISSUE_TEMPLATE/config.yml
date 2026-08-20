@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Where do I get the game?
+    url: https://github.com/gufranco/street-fighter-alpha-2-nochip#faq
+    about: Not from here, and nobody here will tell you. Dump what you own.
+  - name: The decompressor model
+    url: https://github.com/gufranco/snes-sdd1-python
+    about: The part this cartridge carries, held to an independent encoder.
+  - name: The processor model
+    url: https://github.com/gufranco/mos65xx-python
+    about: The 65816 everything here runs on, held to a per-opcode suite.

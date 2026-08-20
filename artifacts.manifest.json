@@ -1,0 +1,93 @@
+{
+  "canonical": {
+    "form": "one file, no copier header, exactly 4194304 bytes",
+    "note": "A 512 byte copier header describes the same bytes. Strip it first, then compare. Every digest below is of the bare file."
+  },
+  "decides": "sha256",
+  "artifacts": [
+    {
+      "name": "Street Fighter Alpha 2, USA",
+      "release": "SNS-AU2E-USA",
+      "region": "USA",
+      "filename": "sfa2-usa-final.sfc",
+      "declares": {
+        "title": "STREET FIGHTER ALPHA2",
+        "map": "0x32",
+        "chipset": "0x43",
+        "coprocessor": "S-DD1",
+        "rom_size": "0x0C",
+        "sram_size": "0x00"
+      },
+      "accepted": [
+        {
+          "size": 4194304,
+          "crc32": "9C59DDFF",
+          "md5": "aa3c90fa7d89eb3dc3389a9436bd0cf8",
+          "sha1": "f4ede150b5281f7f5d7e3188c6d9163c2bc66475",
+          "sha256": "910a29f834199c63c22beddc749baba746da9922196a553255deade59f4fc127"
+        }
+      ],
+      "provenance": "Measured on this machine from a bare file with no copier header. No-Intro names this dump Street Fighter Alpha 2 (USA)."
+    },
+    {
+      "name": "Street Fighter Zero 2, Japan",
+      "release": "SHVC-AU2J-JPN",
+      "region": "Japan",
+      "filename": "sfz2-jp-final.sfc",
+      "declares": {
+        "title": "STREET FIGHTER ZERO2",
+        "map": "0x32",
+        "chipset": "0x43",
+        "coprocessor": "S-DD1",
+        "rom_size": "0x0C",
+        "sram_size": "0x00"
+      },
+      "accepted": [
+        {
+          "size": 4194304,
+          "crc32": "7455A7CF",
+          "md5": "70761ab447f48091a8dc437fd2e9c14d",
+          "sha1": "a0db1045fb308d6a2975a4d305b69f877be727a4",
+          "sha256": "f15731675e22dbf3882b777b2d8cd541a637dfdf5d8880c83903cf1e0b64590e"
+        }
+      ],
+      "provenance": "Measured on this machine from a bare file with no copier header. No-Intro names this dump Street Fighter Zero 2 (Japan)."
+    },
+    {
+      "name": "SNES Classic dump with the sound restored",
+      "release": "not a cartridge",
+      "region": "USA",
+      "filename": "sfa2-usa-vc-sound-restored.sfc",
+      "declares": {
+        "title": "STREET FIGHTER ALPHA2",
+        "map": "0x32",
+        "chipset": "0x43",
+        "coprocessor": "S-DD1",
+        "rom_size": "0x0C",
+        "sram_size": "0x00"
+      },
+      "accepted": [
+        {
+          "size": 4194304,
+          "crc32": "72A9E2C1",
+          "md5": "058471b547ebc59b43704bca664cb690",
+          "sha1": "dfa7cd6f713c44b6a01a6f91de068eb7ace63676",
+          "sha256": "f8aa2ae1f4bc993092fc282a883ecaf669269c17a175a5f43fa95e9da6459dc0"
+        }
+      ],
+      "provenance": "Measured on this machine. This is not a retail cartridge: it carries stream tags and is needed only to regenerate the USA stream table, never to build an image.",
+      "optional": true
+    }
+  ],
+  "known_bad": [],
+  "not_this": [
+    {
+      "name": "An image this project already produced",
+      "why": "A build output has the coprocessor removed and its streams expanded, so feeding one back in patches an already patched image. It is a mistake rather than a dump, and the build says so rather than doing it twice."
+    },
+    {
+      "name": "Star Ocean, Japan",
+      "why": "It carries the same S-DD1 and is read here for reference, but it is a different game and no image is built from it."
+    }
+  ]
+}

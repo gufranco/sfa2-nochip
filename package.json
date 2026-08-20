@@ -5,8 +5,8 @@
   "description": "Release tooling only. This project ships no artefact: the images are built from retail cartridges the user supplies.",
   "license": "MIT",
   "scripts": {
-    "format": "prettier --write \"**/*.json\"",
-    "format:check": "prettier --check \"**/*.json\""
+    "format": "prettier --write \"**/*.{json,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{json,yml,yaml}\""
   },
   "devDependencies": {
     "@semantic-release/exec": "7.1.0",

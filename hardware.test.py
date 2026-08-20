@@ -108,23 +108,24 @@ class ModelTest(unittest.TestCase):
 class CheckoutTest(unittest.TestCase):
     def test_a_directory_with_nothing_in_it_does_not_count_as_checked_out(self):
         with tempfile.TemporaryDirectory() as tmp:
-            empty = Path(tmp) / "snes-rom-image"
+            empty = Path(tmp) / "snes-rom-image-python"
             empty.mkdir()
-            original, hardware.EMULATORS = hardware.EMULATORS, Path(tmp)
+            original, hardware.ROOT = hardware.ROOT, Path(tmp)
             try:
                 self.assertFalse(hardware.is_checked_out("romimage"))
             finally:
-                hardware.EMULATORS = original
+                hardware.ROOT = original
 
     def test_loading_an_unchecked_out_model_names_the_command_that_fixes_it(self):
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "snes-rom-image").mkdir()
-            original, hardware.EMULATORS = hardware.EMULATORS, Path(tmp)
+            (Path(tmp) / "snes-rom-image-python").mkdir()
+            (Path(tmp) / ".git").mkdir()
+            original, hardware.ROOT = hardware.ROOT, Path(tmp)
             try:
                 with self.assertRaises(hardware.ModelMissing) as raised:
                     hardware.load("romimage")
             finally:
-                hardware.EMULATORS = original
+                hardware.ROOT = original
 
         self.assertIn("not checked out", str(raised.exception))
         self.assertIn("git submodule update --init --recursive", str(raised.exception))
