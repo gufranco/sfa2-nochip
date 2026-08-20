@@ -126,19 +126,40 @@ class CheckoutTest(unittest.TestCase):
             finally:
                 hardware.EMULATORS = original
 
+        self.assertIn("not checked out", str(raised.exception))
         self.assertIn("git submodule update --init --recursive", str(raised.exception))
 
     def test_the_message_names_every_model_that_is_missing_not_just_the_one_asked_for(self):
-        message = hardware.checkout_message(["romimage", "sdd1"])
+        message = hardware.checkout_message(["romimage", "sdd1"], from_git=True)
 
         self.assertIn("romimage", message)
         self.assertIn("sdd1", message)
 
     def test_the_message_reads_as_singular_when_one_model_is_missing(self):
-        self.assertIn("model is", hardware.checkout_message(["sdd1"]))
+        self.assertIn("model is", hardware.checkout_message(["sdd1"], from_git=True))
 
     def test_the_message_reads_as_plural_when_several_are_missing(self):
-        self.assertIn("models are", hardware.checkout_message(["sdd1", "mapper"]))
+        self.assertIn("models are", hardware.checkout_message(["sdd1", "mapper"], from_git=True))
+
+    def test_a_clone_is_told_the_command_that_fills_the_submodules_in(self):
+        message = hardware.checkout_message(["sdd1"], from_git=True)
+
+        self.assertIn("git submodule update --init --recursive", message)
+        self.assertNotIn("archive", message)
+
+    def test_an_archive_is_not_given_a_command_that_cannot_work_there(self):
+        message = hardware.checkout_message(["sdd1"], from_git=False)
+
+        self.assertNotIn("git submodule update", message)
+
+    def test_an_archive_is_told_to_clone_and_where_from(self):
+        message = hardware.checkout_message(["sdd1"], from_git=False)
+
+        self.assertIn("archive", message)
+        self.assertIn(f"git clone --recurse-submodules {hardware.ORIGIN}", message)
+
+    def test_this_working_tree_is_recognised_as_a_clone(self):
+        self.assertTrue(hardware.is_git_checkout())
 
     def test_an_unknown_name_is_still_refused_before_anything_else(self):
         with self.assertRaises(hardware.UnknownPackage):

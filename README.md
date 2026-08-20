@@ -20,7 +20,7 @@ out, so it runs from any flash cartridge that can hold it.**
 </p>
 
 **No coprocessor** · **no mapper hardware** · **12,582,912 bytes** · both regions · pre-fight pause cut
-to **0.72 s** · **550** tests · **zero** bytes of game data shipped
+to **0.72 s** · **623** tests · **zero** bytes of game data shipped
 
 ```bash
 python3 tools/identify.py    # check your own cartridge dumps
@@ -322,7 +322,8 @@ python3 pack.py jp           # or one region
 
 The models this project measures itself against are pinned as submodules, so the flag is not
 optional. If you already cloned without it, `git submodule update --init --recursive` fixes the
-clone you have.
+clone you have. GitHub's Download ZIP button cannot work here at all: a source archive never
+carries submodule content, and nothing can add it afterwards. Clone it.
 
 `pack.py` runs the build gate first and refuses to write anything if the stream table fails it. It
 produces `sfa2-usa-nochip-v<version>.sfc` and `sfz2-jp-nochip-v<version>.sfc` alongside a `SHA256SUMS`
@@ -571,7 +572,7 @@ verified by sha256, which is the reference the Python decompressor is tested aga
 | Shell | `shellcheck --severity=style --shell=bash scripts/*.sh` |
 | The image matrix | `python3 tools/rebuild_all.py && python3 tools/validate_all.py` |
 
-550 tests across 35 modules, 350 beside the analysis modules and 200 beside the tools. Several need the
+623 tests across 37 modules, 354 beside the analysis modules and 269 beside the tools. Several need the
 retail cartridges and skip cleanly without them, so a fresh clone runs the suite green.
 
 ### Conventions

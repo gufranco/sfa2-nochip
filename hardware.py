@@ -39,6 +39,9 @@ ROOT = Path(__file__).resolve().parent
 
 EMULATORS = ROOT / "emulators"
 
+ORIGIN = "https://github.com/gufranco/street-fighter-alpha-2-nochip.git"
+"""Where a clone comes from, named so a broken tree can be told how to fix itself."""
+
 PACKAGES = {
     "mos65xx": "mos65xx",
     "spc700": "sony-spc700",
@@ -87,22 +90,33 @@ def missing_models():
     return [package for package in PACKAGES if not is_checked_out(package)]
 
 
-def checkout_message(missing):
+def is_git_checkout():
+    """Whether this tree carries the git metadata a submodule needs to be filled in."""
+    return any((folder / ".git").exists() for folder in (ROOT, *ROOT.parents))
+
+
+def checkout_message(missing, from_git):
     named = ", ".join(sorted(missing))
     subject = "model is" if len(missing) == 1 else "models are"
-    return (
+    said = (
         f"the {named} {subject} pinned here but not checked out. "
-        "A submodule is a pinned commit rather than content, so a plain git clone "
-        "leaves the directory empty and nothing here can import.\n"
-        "    git submodule update --init --recursive\n"
-        "fixes an existing clone. A fresh one wants: "
-        "git clone --recurse-submodules <url>"
+        "A submodule is a pinned commit rather than content, so the directory is "
+        "empty and nothing here can import."
+    )
+    if from_git:
+        return f"{said}\n    git submodule update --init --recursive\nfills them in."
+    return (
+        f"{said}\n"
+        "This tree has no git metadata, so it came from a downloaded archive. A source "
+        "zip never carries submodule content and nothing can fill it in afterwards, so "
+        "there is no repair for this copy. Clone instead:\n"
+        f"    git clone --recurse-submodules {ORIGIN}"
     )
 
 
 def load(package):
     """A model, by the name it is published under."""
     if not is_checked_out(package):
-        raise ModelMissing(checkout_message(missing_models()))
+        raise ModelMissing(checkout_message(missing_models(), is_git_checkout()))
     install()
     return importlib.import_module(package)
